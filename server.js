@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -11,8 +12,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
-// ⚠️ INSIRA SEU ACCESS TOKEN DO MERCADO PAGO AQUI
-const client = new MercadoPagoConfig({ accessToken: 'APP_USR-1023386284133893-100920-935fcd599095003c51437217c39551b0-3579990383' });
+// Configuração do Mercado Pago (Lê do arquivo .env ou do Render, com fallback para o token inserido)
+const client = new MercadoPagoConfig({ 
+    accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-3922552857820372-100920-07bc79655acaddc2ab1a10b9fd7e4f7a-71867761' 
+});
 
 let licencas = {}; // deviceId -> { expiracao, plano, paymentId }
 let pagamentosPendentes = {}; // paymentId -> deviceId
@@ -50,7 +53,7 @@ app.post('/api/licenca/verificar', (req, res) => {
     });
 });
 
-// 2. Gerar Pagamento PIX Real no Mercado Pago
+// 2. Gerar Pagamento PIX Real no Mercado Pago (Atualizado para R$ 20,00)
 app.post('/api/pagamento/criar-pix', async (req, res) => {
     const { deviceId } = req.body;
     if (!deviceId) return res.status(400).json({ error: 'ID obrigatório.' });
@@ -58,9 +61,8 @@ app.post('/api/pagamento/criar-pix', async (req, res) => {
     try {
         const payment = new Payment(client);
         
-        // Criação de pagamento PIX de R$ 29,90 (ou o valor da sua assinatura)
         const body = {
-            transaction_amount: 29.90,
+            transaction_amount: 20.00,
             description: 'RotaFácil - Assinatura Mensal (30 Dias)',
             payment_method_id: 'pix',
             payer: {
