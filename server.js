@@ -30,7 +30,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 1. Verificar Status da Licença
+// 1. Verificar Status da Licença (Com suporte a Teste Grátis de 3h e deteção de bloqueio)
 app.post('/api/licenca/verificar', (req, res) => {
     const { deviceId } = req.body;
     if (!deviceId) return res.status(400).json({ error: 'ID obrigatório.' });
@@ -38,8 +38,13 @@ app.post('/api/licenca/verificar', (req, res) => {
     let licenca = licencas[deviceId];
     if (!licenca) {
         const dataExpiracao = new Date();
-        dataExpiracao.setHours(dataExpiracao.getHours() + 1);
-        licenca = { expiracao: dataExpiracao.toISOString(), plano: 'Teste Grátis', ativo: true };
+        dataExpiracao.setHours(dataExpiracao.getHours() + 3); // 3 horas de teste grátis inicial
+        licenca = { 
+            expiracao: dataExpiracao.toISOString(), 
+            plano: 'Teste Grátis (3h)', 
+            ativo: true, 
+            statusTexto: 'Teste Ativo' 
+        };
         licencas[deviceId] = licenca;
     }
 
@@ -47,8 +52,10 @@ app.post('/api/licenca/verificar', (req, res) => {
     const expiraEm = new Date(licenca.expiracao);
     const tempoRestanteMs = expiraEm - agora;
 
-    if (tempoRestanteMs <= 0) {
-        return res.json({ status: 'expirado', mensagem: 'Sua licença expirou.' });
+    if (tempoRestanteMs <= 0 || licenca.ativo === false) {
+        licenca.ativo = false;
+        licenca.statusTexto = 'Bloqueado / Expirado';
+        return res.json({ status: 'expirado', mensagem: 'Seu acesso expirou ou foi bloqueado pelo administrador.' });
     }
 
     return res.json({
@@ -105,7 +112,8 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
             licencas[deviceId] = {
                 expiracao: dataExpiracao.toISOString(),
                 plano: 'Plano 30 Dias',
-                ativo: true
+                ativo: true,
+                statusTexto: 'Ativo (Pago)'
             };
 
             delete pagamentosPendentes[paymentId];
@@ -118,6 +126,78 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
         res.json({ aprovado: false });
     }
 });
+
+// ==========================================
+// ROTAS DO PAINEL ADMINISTRATIVO
+// ==========================================
+
+// Listar todos os dispositivos com estado detalhado para o Admin
+app.get('/api/admin/dispositivos', (req, res) => {
+    const senha = req.headers['authorization'];
+    if (senha !== 'admin123') {
+        return res.status(401).json({ success: false, message: 'Não autorizado' });
+    }
+
+    const dispositivos = Object.keys(licencas).map(deviceId => {
+        const lic = licencas[deviceId];
+        const expirado = new Date(lic.expiracao) < new Date() || lic.ativo === false;
+        return {
+            deviceId,
+            expiracao: lic.expiracao,
+            plano: lic.plano,
+            ativo: !expirado,
+            statusTexto: expirado ? 'Bloqueado / Expirado' : (lic.statusTexto || lic.plano || 'Ativo')
+        };
+    });
+
+    res.json({ success: true, dispositivos });
+});
+
+// Liberar ou Bloquear um dispositivo específico (incluindo teste de 3h)
+app.post('/api/admin/liberar', (req, res) => {
+    const senha = req.headers['authorization'];
+    if (senha !== 'admin123') {
+        return res.status(401).json({ success: false, message: 'Não autorizado' });
+    }
+
+    const { deviceId, dias } = req.body;
+    if (!deviceId) return res.status(400).json({ success: false, message: 'Device ID obrigatório.' });
+
+    let dataExpiracao = new Date();
+
+    if (dias === 'teste3h') {
+        dataExpiracao.setHours(dataExpiracao.getHours() + 3);
+        licencas[deviceId] = {
+            expiracao: dataExpiracao.toISOString(),
+            plano: 'Teste Grátis (3h)',
+            ativo: true,
+            statusTexto: 'Teste 3h Ativo'
+        };
+    } else if (dias > 0) {
+        if (licencas[deviceId] && new Date(licencas[deviceId].expiracao) > new Date()) {
+            dataExpiracao = new Date(licencas[deviceId].expiracao);
+        }
+        dataExpiracao.setDate(dataExpiracao.getDate() + dias);
+        licencas[deviceId] = {
+            expiracao: dataExpiracao.toISOString(),
+            plano: `Plano Admin (${dias} Dias)`,
+            ativo: true,
+            statusTexto: 'Ativo (Liberado Admin)'
+        };
+    } else {
+        dataExpiracao = new Date(0);
+        licencas[deviceId] = {
+            expiracao: dataExpiracao.toISOString(),
+            plano: 'Bloqueado',
+            ativo: false,
+            statusTexto: 'Bloqueado pelo Admin'
+        };
+    }
+
+    res.json({ success: true, deviceId, expiracao: dataExpiracao.toISOString() });
+});
+
+// ==========================================
 
 // 4. Rota para Extrair Endereços de PDF ou Fotos
 app.post('/api/extrair-enderecos', upload.any(), async (req, res) => {
@@ -166,12 +246,12 @@ Não inclua nenhum texto ou formatação markdown adicional fora do array JSON. 
 Texto:
 ${textoExtraido}`;
 
-exports = await ai.models.generateContent({
+        const aiResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: promptJson
         });
 
-        let textoResposta = exports.text.trim();
+        let textoResposta = aiResponse.text.trim();
         textoResposta = textoResposta.replace(/```json/g, '').replace(/```/g, '').trim();
         const enderecos = JSON.parse(textoResposta);
 
@@ -183,7 +263,7 @@ exports = await ai.models.generateContent({
     }
 });
 
-// 5. Rota segura de Geocodificação (Protegida contra respostas HTML e erros de sintaxe)
+// 5. Rota segura de Geocodificação
 app.post('/api/geocodificar', async (req, res) => {
     const { endereco } = req.body;
     if (!endereco) return res.status(400).json({ error: 'Endereço obrigatório.' });
@@ -198,7 +278,6 @@ app.post('/api/geocodificar', async (req, res) => {
 
         const textResponse = await response.text();
         
-        // Garante que a resposta é JSON válido e não uma página HTML de erro do servidor de mapas
         if (!textResponse.startsWith('[') && !textResponse.startsWith('{')) {
             return res.json({ success: false, error: 'Resposta inválida do serviço de mapas' });
         }
