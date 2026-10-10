@@ -6,6 +6,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const { GoogleGenAI } = require('@google/genai');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,53 +18,71 @@ app.use(express.static(path.join(__dirname)));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Configuração do Supabase (adicione SUPABASE_URL e SUPABASE_KEY no seu .env)
+const supabaseUrl = process.env.SUPABASE_URL || 'SUA_URL_DO_SUPABASE';
+const supabaseKey = process.env.SUPABASE_KEY || 'SUA_CHAVE_DO_SUPABASE';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 const client = new MercadoPagoConfig({ 
     accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-3922552857820372-100920-07bc79655acaddc2ab1a10b9fd7e4f7a-71867761' 
 });
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-let licencas = {}; 
 let pagamentosPendentes = {}; 
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 1. Verificar Status da Licença (Com suporte a Teste Grátis de 3h e deteção de bloqueio)
-app.post('/api/licenca/verificar', (req, res) => {
+// 1. Verificar Status da Licença no Supabase
+app.post('/api/licenca/verificar', async (req, res) => {
     const { deviceId } = req.body;
     if (!deviceId) return res.status(400).json({ error: 'ID obrigatório.' });
 
-    let licenca = licencas[deviceId];
-    if (!licenca) {
-        const dataExpiracao = new Date();
-        dataExpiracao.setHours(dataExpiracao.getHours() + 3); // 3 horas de teste grátis inicial
-        licenca = { 
-            expiracao: dataExpiracao.toISOString(), 
-            plano: 'Teste Grátis (3h)', 
-            ativo: true, 
-            statusTexto: 'Teste Ativo' 
-        };
-        licencas[deviceId] = licenca;
+    try {
+        let { data: licenca, error } = await supabase
+            .from('licencas')
+            .select('*')
+            .eq('device_id', deviceId)
+            .single();
+
+        const agora = new Date();
+
+        if (!licenca) {
+            // Criar teste grátis de 3 horas no Supabase para novos dispositivos
+            const dataExpiracao = new Date();
+            dataExpiracao.setHours(dataExpiracao.getHours() + 3);
+            
+            const novaLicenca = {
+                device_id: deviceId,
+                expiracao: dataExpiracao.toISOString(),
+                plano: 'Teste Grátis (3h)',
+                ativo: true,
+                status_texto: 'Teste Ativo'
+            };
+
+            await supabase.from('licencas').insert([novaLicenca]);
+            licenca = novaLicenca;
+        }
+
+        const expiraEm = new Date(licenca.expiracao);
+        const tempoRestanteMs = expiraEm - agora;
+
+        if (tempoRestanteMs <= 0 || licenca.ativo === false) {
+            await supabase.from('licencas').update({ ativo: false, status_texto: 'Bloqueado / Expirado' }).eq('device_id', deviceId);
+            return res.json({ status: 'expirado', mensagem: 'Seu acesso expirou ou foi bloqueado pelo administrador.' });
+        }
+
+        return res.json({
+            status: 'ativo',
+            plano: licenca.plano,
+            expiracao: licenca.expiracao,
+            tempoRestanteMs: tempoRestanteMs
+        });
+    } catch (err) {
+        console.error("Erro ao verificar licença no Supabase:", err);
+        return res.status(500).json({ error: 'Erro interno ao verificar licença.' });
     }
-
-    const agora = new Date();
-    const expiraEm = new Date(licenca.expiracao);
-    const tempoRestanteMs = expiraEm - agora;
-
-    if (tempoRestanteMs <= 0 || licenca.ativo === false) {
-        licenca.ativo = false;
-        licenca.statusTexto = 'Bloqueado / Expirado';
-        return res.json({ status: 'expirado', mensagem: 'Seu acesso expirou ou foi bloqueado pelo administrador.' });
-    }
-
-    return res.json({
-        status: 'ativo',
-        plano: licenca.plano,
-        expiracao: licenca.expiracao,
-        tempoRestanteMs: tempoRestanteMs
-    });
 });
 
 // 2. Gerar Pagamento PIX Real no Mercado Pago
@@ -93,7 +112,7 @@ app.post('/api/pagamento/criar-pix', async (req, res) => {
     }
 });
 
-// 3. Consultar Status do Pagamento
+// 3. Consultar Status do Pagamento e Atualizar Supabase
 app.post('/api/pagamento/verificar-status', async (req, res) => {
     const { paymentId, deviceId } = req.body;
     if (!paymentId || !deviceId) return res.status(400).json({ error: 'Dados incompletos.' });
@@ -104,17 +123,29 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
 
         if (response.status === 'approved') {
             let dataExpiracao = new Date();
-            if (licencas[deviceId] && new Date(licencas[deviceId].expiracao) > new Date()) {
-                dataExpiracao = new Date(licencas[deviceId].expiracao);
+            
+            let { data: licencaAtual } = await supabase
+                .from('licencas')
+                .select('*')
+                .eq('device_id', deviceId)
+                .single();
+
+            if (licencaAtual && new Date(licencaAtual.expiracao) > new Date()) {
+                dataExpiracao = new Date(licencaAtual.expiracao);
             }
             dataExpiracao.setDate(dataExpiracao.getDate() + 30);
 
-            licencas[deviceId] = {
+            const dadosAtualizados = {
                 expiracao: dataExpiracao.toISOString(),
                 plano: 'Plano 30 Dias',
                 ativo: true,
-                statusTexto: 'Ativo (Pago)'
+                status_texto: 'Ativo (Pago)'
             };
+
+            await supabase
+                .from('licencas')
+                .update(dadosAtualizados)
+                .eq('device_id', deviceId);
 
             delete pagamentosPendentes[paymentId];
             return res.json({ aprovado: true, plano: 'Plano 30 Dias', expiracao: dataExpiracao.toISOString() });
@@ -128,33 +159,41 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DO PAINEL ADMINISTRATIVO
+// ROTAS DO PAINEL ADMINISTRATIVO (SUPABASE)
 // ==========================================
 
-// Listar todos os dispositivos com estado detalhado para o Admin
-app.get('/api/admin/dispositivos', (req, res) => {
+app.get('/api/admin/dispositivos', async (req, res) => {
     const senha = req.headers['authorization'];
     if (senha !== 'admin123') {
         return res.status(401).json({ success: false, message: 'Não autorizado' });
     }
 
-    const dispositivos = Object.keys(licencas).map(deviceId => {
-        const lic = licencas[deviceId];
-        const expirado = new Date(lic.expiracao) < new Date() || lic.ativo === false;
-        return {
-            deviceId,
-            expiracao: lic.expiracao,
-            plano: lic.plano,
-            ativo: !expirado,
-            statusTexto: expirado ? 'Bloqueado / Expirado' : (lic.statusTexto || lic.plano || 'Ativo')
-        };
-    });
+    try {
+        let { data: dispositivos, error } = await supabase
+            .from('licencas')
+            .select('*');
 
-    res.json({ success: true, dispositivos });
+        if (error) throw error;
+
+        const listaFormatada = dispositivos.map(item => {
+            const expirado = new Date(item.expiracao) < new Date() || item.ativo === false;
+            return {
+                deviceId: item.device_id,
+                expiracao: item.expiracao,
+                plano: item.plano,
+                ativo: !expirado,
+                statusTexto: expirado ? 'Bloqueado / Expirado' : (item.status_texto || item.plano || 'Ativo')
+            };
+        });
+
+        res.json({ success: true, dispositivos: listaFormatada });
+    } catch (e) {
+        console.error("Erro ao buscar dispositivos no Supabase:", e);
+        res.status(500).json({ success: false, message: 'Erro ao carregar dispositivos' });
+    }
 });
 
-// Liberar ou Bloquear um dispositivo específico (incluindo teste de 3h)
-app.post('/api/admin/liberar', (req, res) => {
+app.post('/api/admin/liberar', async (req, res) => {
     const senha = req.headers['authorization'];
     if (senha !== 'admin123') {
         return res.status(401).json({ success: false, message: 'Não autorizado' });
@@ -163,38 +202,57 @@ app.post('/api/admin/liberar', (req, res) => {
     const { deviceId, dias } = req.body;
     if (!deviceId) return res.status(400).json({ success: false, message: 'Device ID obrigatório.' });
 
-    let dataExpiracao = new Date();
+    try {
+        let dataExpiracao = new Date();
+        let novosDados = {};
 
-    if (dias === 'teste3h') {
-        dataExpiracao.setHours(dataExpiracao.getHours() + 3);
-        licencas[deviceId] = {
-            expiracao: dataExpiracao.toISOString(),
-            plano: 'Teste Grátis (3h)',
-            ativo: true,
-            statusTexto: 'Teste 3h Ativo'
-        };
-    } else if (dias > 0) {
-        if (licencas[deviceId] && new Date(licencas[deviceId].expiracao) > new Date()) {
-            dataExpiracao = new Date(licencas[deviceId].expiracao);
+        let { data: licencaAtual } = await supabase
+            .from('licencas')
+            .select('*')
+            .eq('device_id', deviceId)
+            .single();
+
+        if (dias === 'teste3h') {
+            dataExpiracao.setHours(dataExpiracao.getHours() + 3);
+            novosDados = {
+                expiracao: dataExpiracao.toISOString(),
+                plano: 'Teste Grátis (3h)',
+                ativo: true,
+                status_texto: 'Teste 3h Ativo'
+            };
+        } else if (dias > 0) {
+            if (licencaAtual && new Date(licencaAtual.expiracao) > new Date()) {
+                dataExpiracao = new Date(licencaAtual.expiracao);
+            }
+            dataExpiracao.setDate(dataExpiracao.getDate() + dias);
+            novosDados = {
+                expiracao: dataExpiracao.toISOString(),
+                plano: `Plano Admin (${dias} Dias)`,
+                ativo: true,
+                status_texto: 'Ativo (Liberado Admin)'
+            };
+        } else {
+            dataExpiracao = new Date(0);
+            novosDados = {
+                expiracao: dataExpiracao.toISOString(),
+                plano: 'Bloqueado',
+                ativo: false,
+                status_texto: 'Bloqueado pelo Admin'
+            };
         }
-        dataExpiracao.setDate(dataExpiracao.getDate() + dias);
-        licencas[deviceId] = {
-            expiracao: dataExpiracao.toISOString(),
-            plano: `Plano Admin (${dias} Dias)`,
-            ativo: true,
-            statusTexto: 'Ativo (Liberado Admin)'
-        };
-    } else {
-        dataExpiracao = new Date(0);
-        licencas[deviceId] = {
-            expiracao: dataExpiracao.toISOString(),
-            plano: 'Bloqueado',
-            ativo: false,
-            statusTexto: 'Bloqueado pelo Admin'
-        };
-    }
 
-    res.json({ success: true, deviceId, expiracao: dataExpiracao.toISOString() });
+        if (licencaAtual) {
+            await supabase.from('licencas').update(novosDados).eq('device_id', deviceId);
+        } else {
+            novosDados.device_id = deviceId;
+            await supabase.from('licencas').insert([novosDados]);
+        }
+
+        res.json({ success: true, deviceId, expiracao: dataExpiracao.toISOString() });
+    } catch (e) {
+        console.error("Erro ao atualizar licença no Supabase:", e);
+        res.status(500).json({ success: false, message: 'Erro ao atualizar licença' });
+    }
 });
 
 // ==========================================
@@ -270,7 +328,7 @@ app.post('/api/geocodificar', async (req, res) => {
 
     try {
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco + ', Brasil')}&limit=1`;
-        const response = await fetch(url, {
+        const response = alt = await fetch(url, {
             headers: { 
                 'User-Agent': 'RotaFacilApp/2.3 (contato@rotafacil.com)' 
             }
