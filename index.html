@@ -66,12 +66,17 @@
             <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
                 <div class="text-xs text-slate-400 font-semibold uppercase">Estado da Assinatura</div>
                 <div id="statusPlanoMenu" class="text-sm font-bold text-blue-600">A carregar...</div>
-                <!-- CRONÓMETRO MOVIDO PARA DENTRO DO DASHBOARD LATERAL -->
                 <div class="text-xs text-slate-500 pt-1 border-t border-slate-200/60 flex items-center justify-between">
                     <span>Expira em:</span>
                     <strong id="cronometroDisplay" class="font-mono text-blue-700 text-xs">A calcular...</strong>
                 </div>
-                <div class="text-xs text-slate-500 pt-1">O seu ID: <span id="menuDeviceId" class="text-blue-500 font-mono text-[11px]">...</span></div>
+                <div class="text-xs text-slate-500 pt-1 flex items-center justify-between">
+                    <span>O seu ID:</span>
+                    <div class="flex items-center gap-1.5">
+                        <span id="menuDeviceId" class="text-blue-500 font-mono text-[11px]">...</span>
+                        <button onclick="copiarMeuId()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-bold transition-all" title="Copiar ID"><i class="fa-solid fa-copy"></i> Copy</button>
+                    </div>
+                </div>
             </div>
 
             <nav class="space-y-2">
@@ -195,6 +200,13 @@
                 if (tempoRestanteMsGlobal > 0) { tempoRestanteMsGlobal -= 1000; exibirCronômetro(tempoRestanteMsGlobal); }
             }, 1000);
         };
+
+        function copiarMeuId() {
+            const idText = document.getElementById('menuDeviceId').innerText;
+            navigator.clipboard.writeText(idText).then(() => {
+                alert("📋 ID copiado para a área de transferência!");
+            });
+        }
 
         function inicializarMapaLeaflet() {
             map = L.map('map', { zoomControl: false }).setView([-23.550520, -46.633308], 13);

@@ -53,10 +53,18 @@
         </div>
 
         <!-- TABELA DE UTILIZADORES -->
-        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div class="p-4 border-b border-slate-100 font-bold text-xs text-slate-500 uppercase flex items-center gap-2">
-                <i class="fa-solid fa-users text-blue-500"></i> Dispositivos Registados e Estados
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden space-y-4 p-4">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div class="font-bold text-xs text-slate-500 uppercase flex items-center gap-2">
+                    <i class="fa-solid fa-users text-blue-500"></i> Dispositivos Registados e Estados
+                </div>
+                <!-- BARRA DE PESQUISA POR ID -->
+                <div class="relative w-full sm:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-search text-xs"></i></span>
+                    <input type="text" id="inputPesquisa" placeholder="Pesquisar por ID..." onkeyup="filtrarDispositivos()" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
             </div>
+
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                     <thead class="bg-slate-50 text-slate-400 uppercase font-semibold border-b border-slate-100">
@@ -78,6 +86,7 @@
 
     <script>
         let tokenAdmin = "";
+        let listaGlobalDispositivos = [];
 
         function fazerLogin() {
             const senha = document.getElementById('senhaAdmin').value.trim();
@@ -100,36 +109,47 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    const tbody = document.getElementById('tabelaUtilizadores');
-                    tbody.innerHTML = '';
-                    
-                    let ativos = 0;
-                    document.getElementById('totalDispositivos').innerText = data.dispositivos.length;
-
-                    data.dispositivos.forEach(item => {
-                        if (item.ativo) ativos++;
-
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td class="p-3 font-mono text-blue-600">${item.deviceId}</td>
-                            <td class="p-3 font-bold ${item.ativo ? 'text-emerald-600' : 'text-red-600'}">
-                                ${item.statusTexto}
-                            </td>
-                            <td class="p-3 text-slate-500">${new Date(item.expiracao).toLocaleString('pt-BR')}</td>
-                            <td class="p-3 text-center space-x-1">
-                                <button onclick="liberarAcesso('${item.deviceId}', 'teste3h')" class="bg-amber-500 hover:bg-amber-400 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Liberar Teste de 3 Horas">+3h Teste</button>
-                                <button onclick="liberarAcesso('${item.deviceId}', 30)" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Liberar +30 Dias">+30 Dias</button>
-                                <button onclick="liberarAcesso('${item.deviceId}', 0)" class="bg-red-500 hover:bg-red-400 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Bloquear Acesso">Bloquear</button>
-                            </td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                    document.getElementById('totalAtivos').innerText = ativos;
+                    listaGlobalDispositivos = data.dispositivos;
+                    renderizarTabela(listaGlobalDispositivos);
                 }
             } catch (e) {
                 console.error(e);
                 alert("Erro ao carregar lista de dispositivos.");
             }
+        }
+
+        function renderizarTabela(dispositivos) {
+            const tbody = document.getElementById('tabelaUtilizadores');
+            tbody.innerHTML = '';
+            
+            let ativos = 0;
+            document.getElementById('totalDispositivos').innerText = dispositivos.length;
+
+            dispositivos.forEach(item => {
+                if (item.ativo) ativos++;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3 font-mono text-blue-600">${item.deviceId}</td>
+                    <td class="p-3 font-bold ${item.ativo ? 'text-emerald-600' : 'text-red-600'}">
+                        ${item.statusTexto}
+                    </td>
+                    <td class="p-3 text-slate-500">${new Date(item.expiracao).toLocaleString('pt-BR')}</td>
+                    <td class="p-3 text-center space-x-1">
+                        <button onclick="liberarAcesso('${item.deviceId}', 'teste3h')" class="bg-amber-500 hover:bg-amber-400 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Liberar Teste de 3 Horas">+3h Teste</button>
+                        <button onclick="liberarAcesso('${item.deviceId}', 30)" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Liberar +30 Dias">+30 Dias</button>
+                        <button onclick="liberarAcesso('${item.deviceId}', 0)" class="bg-red-500 hover:bg-red-400 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow-sm" title="Bloquear Acesso">Bloquear</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('totalAtivos').innerText = ativos;
+        }
+
+        function filtrarDispositivos() {
+            const termo = document.getElementById('inputPesquisa').value.toLowerCase();
+            const filtrados = listaGlobalDispositivos.filter(item => item.deviceId.toLowerCase().includes(termo));
+            renderizarTabela(filtrados);
         }
 
         async function liberarAcesso(deviceId, dias) {
@@ -141,7 +161,6 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    alert(`✅ Acesso atualizado para o dispositivo ${deviceId}!`);
                     carregarDispositivos();
                 } else {
                     alert("Erro ao atualizar acesso.");
