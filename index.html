@@ -439,7 +439,7 @@
                         });
                         salvarDados();
                         atualizarLista();
-                        alert(`✅ ${data.enderecos.length} endereços importados com sucesso!`);
+                        alert(`✅ ${destinos.length} endereços importados com sucesso!`);
                     } else {
                         alert("⚠️ Nenhum endereço encontrado.");
                     }
@@ -542,6 +542,7 @@
             return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
         }
 
+        // ATUALIZADO: Começa obrigatoriamente pela parada mais próxima da origem atual
         async function otimizarRota() {
             if (destinos.length < 2) { 
                 alert("Adicione pelo menos 2 endereços."); 
@@ -574,14 +575,64 @@
                 return;
             }
 
-            let atual = validos[0], naoVisitados = validos.slice(1), rota = [atual], distTotal = 0;
+            let origemLat = null, origemLon = null;
+            let origemStr = document.getElementById('origemInput').value.trim();
+            
+            if (origemStr && origemStr.includes(',')) {
+                let partes = origemStr.split(',');
+                let pLat = parseFloat(partes[0]), pLon = parseFloat(partes[1]);
+                if (!isNaN(pLat) && !isNaN(pLon)) {
+                    origemLat = pLat;
+                    origemLon = pLon;
+                }
+            }
+
+            if (!origemLat && origemStr) {
+                let coordsOrigem = await geocodificarComAtraso(origemStr);
+                if (coordsOrigem) {
+                    origemLat = coordsOrigem.lat;
+                    origemLon = coordsOrigem.lon;
+                }
+            }
+
+            let naoVisitados = [...validos];
+            let atual;
+
+            if (origemLat && origemLon) {
+                let maisProxIdx = 0;
+                let menorD = calcularDistancia(origemLat, origemLon, naoVisitados[0].lat, naoVisitados[0].lon);
+                for (let i = 1; i < naoVisitados.length; i++) {
+                    let d = calcularDistancia(origemLat, origemLon, naoVisitados[i].lat, naoVisitados[i].lon);
+                    if (d < menorD) {
+                        menorD = d;
+                        maisProxIdx = i;
+                    }
+                }
+                atual = naoVisitados.splice(maisProxIdx, 1)[0];
+            } else {
+                atual = naoVisitados.shift();
+            }
+
+            let rota = [atual];
+            let distTotal = 0;
+
             while (naoVisitados.length > 0) {
-                let maisProx = naoVisitados[0], menorD = calcularDistancia(atual.lat, atual.lon, maisProx.lat, maisProx.lon), idx = 0;
+                let maisProx = naoVisitados[0];
+                let menorD = calcularDistancia(atual.lat, atual.lon, maisProx.lat, maisProx.lon);
+                let idx = 0;
+
                 for (let i = 1; i < naoVisitados.length; i++) {
                     let d = calcularDistancia(atual.lat, atual.lon, naoVisitados[i].lat, naoVisitados[i].lon);
-                    if (d < menorD) { menorD = d; maisProx = naoVisitados[i]; idx = i; }
+                    if (d < menorD) { 
+                        menorD = d; 
+                        maisProx = naoVisitados[i]; 
+                        idx = i; 
+                    }
                 }
-                distTotal += menorD; rota.push(maisProx); atual = maisProx; naoVisitados.splice(idx, 1);
+                distTotal += menorD; 
+                rota.push(maisProx); 
+                atual = maisProx; 
+                naoVisitados.splice(idx, 1);
             }
             
             destinos = rota; 
@@ -589,7 +640,7 @@
             atualizarLista(); 
             redrawMapMarkers();
             document.getElementById('distanciaTotal').innerText = `${distTotal.toFixed(1)} km`;
-            alert("✅ Rota otimizada com sucesso!");
+            alert("✅ Rota otimizada! A Parada 1 é agora a mais próxima de si.");
         }
 
         function navegarProximaParada() {
@@ -618,7 +669,6 @@
             }
         }
 
-        // ATUALIZADO: Converte as coordenadas do GPS em nome da rua e morada legível
         async function usarLocalizacaoAtual() {
             if (navigator.geolocation) {
                 const inputOrigem = document.getElementById('origemInput');
