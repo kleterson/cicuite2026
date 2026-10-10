@@ -6,15 +6,26 @@
     <title>RotaFácil - Otimizador Inteligente</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS para o mapa gratuito e customizável -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
     <style>
         input { font-size: 16px !important; }
         #listaDestinos::-webkit-scrollbar { width: 6px; }
         #listaDestinos::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
         #listaDestinos::-webkit-scrollbar-track { background: transparent; }
         
-        #map { height: 260px; width: 100%; border-radius: 1rem; z-index: 1; transition: all 0.3s ease; }
-        .mapa-fullscreen { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; border-radius: 0 !important; }
+        #map { height: 280px; width: 100%; border-radius: 1rem; transition: all 0.3s ease; position: relative; z-index: 10; }
+        
+        /* Filtro inteligente para deixar o mapa com um visual escuro perfeito (Dark Mode nativo gratuito) */
+        .leaflet-tile-pane {
+            filter: brightness(0.65) invert(1) contrast(2.5) hue-rotate(200deg) saturate(0.3);
+        }
+
+        .mapa-fullscreen {
+            position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; border-radius: 0 !important;
+        }
 
         @keyframes pulse-mic {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
@@ -54,10 +65,10 @@
 
             <nav class="space-y-2">
                 <a href="#" onclick="toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl bg-slate-800/80 text-emerald-400 font-medium text-sm transition-all"><i class="fa-solid fa-route w-5"></i> Gerenciar Rotas</a>
-                <a href="#" onclick="iniciarPagamentoPix(); toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl text-amber-300 hover:bg-amber-950/40 font-bold text-sm transition-all border border-amber-500/30"><i class="fa-solid fa-qrcode w-5"></i> Pagar Pix (30 Dias)</a>
+                <a href="#" onclick="iniciarPagamentoPix(); toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl text-amber-300 hover:bg-amber-950/40 font-bold text-sm transition-all border border-amber-500/30"><i class="fa-solid fa-qrcode w-5"></i> Pagar Pix (R$ 20,00)</a>
             </nav>
         </div>
-        <div class="border-t border-slate-800 pt-4 text-xs text-slate-500 text-center">RotaFácil &bull; v2.0 Real</div>
+        <div class="border-t border-slate-800 pt-4 text-xs text-slate-500 text-center">RotaFácil &bull; v2.2 Leaflet Maps</div>
     </aside>
 
     <!-- MODAL PIX REAL -->
@@ -69,7 +80,6 @@
                 <p class="text-xs text-slate-400">Escaneie o QR Code abaixo com o app do seu banco.</p>
             </div>
 
-            <!-- Imagem QR Code Real -->
             <div class="bg-white p-3 rounded-2xl inline-block">
                 <img id="imgQrCode" src="" alt="Gerando QR Code..." class="w-44 h-44 mx-auto">
             </div>
@@ -112,7 +122,7 @@
         <div id="telaBloqueio" class="hidden text-center py-12 px-4 space-y-4 bg-slate-950/90 rounded-2xl border border-red-500/30">
             <div class="text-red-400 text-5xl"><i class="fa-solid fa-hourglass-end"></i></div>
             <h2 class="text-lg font-bold text-white">Sua licença expirou!</h2>
-            <p class="text-xs text-slate-400">Faça o pagamento via Pix para renovar seu acesso por mais 30 dias instantaneamente.</p>
+            <p class="text-xs text-slate-400">Faça o pagamento via Pix de R$ 20,00 para renovar seu acesso por 30 dias.</p>
             <button onclick="iniciarPagamentoPix()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl text-xs shadow-lg">Pagar Pix Agora</button>
         </div>
 
@@ -127,7 +137,16 @@
             </section>
 
             <section class="bg-slate-800/60 p-3.5 rounded-2xl border border-slate-700/60 space-y-2">
-                <label for="destinoInput" class="text-xs font-bold text-slate-300 flex items-center gap-2 uppercase"><i class="fa-solid fa-map-pin text-emerald-400"></i> Adicionar Destinos</label>
+                <div class="flex items-center justify-between">
+                    <label for="destinoInput" class="text-xs font-bold text-slate-300 flex items-center gap-2 uppercase"><i class="fa-solid fa-map-pin text-emerald-400"></i> Adicionar Destinos</label>
+                    
+                    <!-- BOTÃO IMPORTAR FOTO / PDF -->
+                    <label for="fileImport" class="cursor-pointer bg-emerald-700/80 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm">
+                        <i class="fa-solid fa-file-arrow-up"></i> Importar Foto/PDF
+                    </label>
+                    <input type="file" id="fileImport" accept="image/*,application/pdf" class="hidden" onchange="importarArquivoEnderecos(event)">
+                </div>
+
                 <div class="flex gap-2">
                     <input type="text" id="destinoInput" placeholder="Ex: Av. Paulista, 1000" class="flex-grow bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-emerald-500 shadow-sm" onkeypress="if(event.key === 'Enter') adicionarDestino()">
                     <button onclick="ouvirVoz('destinoInput', this)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 w-12 h-12 rounded-xl flex items-center justify-center shrink-0"><i class="fa-solid fa-microphone text-sm"></i></button>
@@ -151,8 +170,9 @@
             <section class="space-y-1.5 relative">
                 <div class="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase px-1">
                     <span class="flex items-center gap-1"><i class="fa-solid fa-map text-emerald-400"></i> Mapa da Rota</span>
-                    <button onclick="alternarTelaCheiaMapa()" id="btnFullMap" class="text-sky-400 hover:text-sky-300 flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg"><i class="fa-solid fa-expand"></i> Expandir</button>
+                    <button onclick="alternarTelaCheiaMapa()" id="btnFullMap" class="text-sky-400 hover:text-sky-300 flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg"><i class="fa-solid fa-expand" id="iconeExpandir"></i> <span id="textoBtnExpandir">Expandir</span></button>
                 </div>
+                <!-- LEAFLET MAP CONTAINER -->
                 <div id="map" class="border border-slate-700 shadow-inner"></div>
             </section>
 
@@ -163,10 +183,11 @@
         </div>
     </div>
 
+    <!-- LEAFLET JS SCRIPT -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
-        let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
         let map, markersLayer, polylineLayer;
+        let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
         let tempoRestanteMsGlobal = 0;
         let intervaloVerificacaoPix = null;
         let deviceId = localStorage.getItem('rotaFacilDeviceId');
@@ -175,12 +196,27 @@
         window.onload = function() {
             document.getElementById('menuDeviceId').innerText = deviceId;
             verificarLicenca();
-            inicializarMapa();
             atualizarLista();
+            inicializarMapaLeaflet();
             setInterval(() => {
                 if (tempoRestanteMsGlobal > 0) { tempoRestanteMsGlobal -= 1000; exibirCronômetro(tempoRestanteMsGlobal); }
             }, 1000);
         };
+
+        function inicializarMapaLeaflet() {
+            map = L.map('map', { zoomControl: false }).setView([-23.550520, -46.633308], 13);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            markersLayer = L.layerGroup().addTo(map);
+            polylineLayer = L.layerGroup().addTo(map);
+
+            redrawMapMarkers();
+        }
 
         function toggleMenu() {
             document.getElementById('sidebar').classList.toggle('open');
@@ -198,7 +234,6 @@
             alert("📋 Chave Pix copiada!");
         }
 
-        // GERA O PIX REAL E INICIA O POLLING AUTOMÁTICO
         function iniciarPagamentoPix() {
             abrirModalPagamento();
             document.getElementById('statusAguardando').innerText = "Gerando QR Code Pix...";
@@ -215,11 +250,8 @@
                     document.getElementById('pixCopiaCola').value = data.qrCodeCopiaCola;
                     document.getElementById('statusAguardando').innerText = "Aguardando confirmação do pagamento...";
 
-                    // Fica checando a cada 4 segundos se o pagamento foi aprovado no banco
                     if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
-                    intervaloVerificacaoPix = setInterval(() => {
-                        verificarStatusPagamento(data.paymentId);
-                    }, 4000);
+                    intervaloVerificacaoPix = setInterval(() => { verificarStatusPagamento(data.paymentId); }, 4000);
                 } else {
                     alert("Erro ao gerar Pix.");
                 }
@@ -236,7 +268,7 @@
             .then(data => {
                 if (data.aprovado) {
                     clearInterval(intervaloVerificacaoPix);
-                    alert("🎉 Pagamento aprovado! 30 dias de acesso liberados com sucesso.");
+                    alert("🎉 Pagamento aprovado! 30 dias liberados.");
                     fecharModalPagamento();
                     location.reload();
                 }
@@ -270,13 +302,6 @@
             let texto = `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
             if (dias > 0) texto = `${dias}d ` + texto;
             document.getElementById('cronometroDisplay').innerText = texto;
-        }
-
-        function inicializarMapa() {
-            map = L.map('map').setView([-23.550520, -46.633308], 12);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-            markersLayer = L.layerGroup().addTo(map);
-            redrawMapMarkers();
         }
 
         function salvarDados() { localStorage.setItem('rotaFacilDestinos', JSON.stringify(destinos)); }
@@ -319,6 +344,44 @@
             });
         }
 
+        // Função para importar endereços via Foto ou PDF[cite: 1]
+        async function importarArquivoEnderecos(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('arquivo', file);
+
+            alert("🔍 Lendo arquivo e extraindo endereços automaticamente...");
+
+            try {
+                const response = await fetch('/api/extrair-enderecos', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success && data.enderecos && data.enderecos.length > 0) {
+                    data.enderecos.forEach(end => {
+                        destinos.push({ endereco: end, lat: null, lon: null, id: Date.now() + Math.random() });
+                    });
+                    salvarDados();
+                    atualizarLista();
+                    
+                    // Geocodifica e otimiza automaticamente após importar
+                    otimizarRota();
+                    alert(`✅ ${data.enderecos.length} endereços importados e organizados com sucesso!`);
+                } else {
+                    alert("⚠️ Nenhum endereço foi encontrado neste arquivo.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("❌ Erro ao processar o arquivo.");
+            } finally {
+                event.target.value = ''; // Limpa o input file
+            }
+        }
+
         function removerDestino(index) { destinos.splice(index, 1); salvarDados(); atualizarLista(); redrawMapMarkers(); }
         function limparTudo() { if(confirm("Apagar tudo?")) { destinos = []; document.getElementById('origemInput').value = ''; salvarDados(); atualizarLista(); redrawMapMarkers(); document.getElementById('distanciaTotal').innerText = '0.0 km'; } }
 
@@ -341,29 +404,48 @@
         function redrawMapMarkers() {
             if (!map) return;
             markersLayer.clearLayers();
-            if (polylineLayer) map.removeLayer(polylineLayer);
+            polylineLayer.clearLayers();
+
             let latLngs = [];
             destinos.forEach((item, index) => {
                 if (item.lat && item.lon) {
-                    const icon = L.divIcon({
-                        className: 'custom-icon',
-                        html: `<div style="background-color: #0284c7; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; border: 2px solid white;">${index + 1}</div>`,
-                        iconSize: [28, 28], iconAnchor: [14, 14]
+                    const latLng = [item.lat, item.lon];
+                    latLngs.push(latLng);
+
+                    const customIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style="background-color: #0284c7; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">${index + 1}</div>`,
+                        iconSize: [26, 26],
+                        iconAnchor: [13, 13]
                     });
-                    markersLayer.addLayer(L.marker([item.lat, item.lon], { icon }).bindPopup(`Parada ${index + 1}: ${item.endereco}`));
-                    latLngs.push([item.lat, item.lon]);
+
+                    L.marker(latLng, { icon: customIcon }).bindPopup(`<b>Parada ${index + 1}</b><br>${item.endereco}`).addTo(markersLayer);
                 }
             });
+
             if (latLngs.length > 0) {
-                polylineLayer = L.polyline(latLngs, { color: '#38bdf8', weight: 4 }).addTo(map);
-                map.fitBounds(polylineLayer.getBounds(), { padding: [40, 40] });
+                const polyline = L.polyline(latLngs, { color: '#38bdf8', weight: 4, opacity: 0.8 });
+                polylineLayer.addLayer(polyline);
+                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
             }
-            setTimeout(() => { map.invalidateSize(); }, 200);
         }
 
         function alternarTelaCheiaMapa() {
-            document.getElementById('map').classList.toggle('mapa-fullscreen');
-            map.invalidateSize();
+            const mapEl = document.getElementById('map');
+            const icone = document.getElementById('iconeExpandir');
+            const texto = document.getElementById('textoBtnExpandir');
+            
+            mapEl.classList.toggle('mapa-fullscreen');
+            
+            if (mapEl.classList.contains('mapa-fullscreen')) {
+                icone.className = "fa-solid fa-compress";
+                texto.innerText = "Desexpandir";
+            } else {
+                icone.className = "fa-solid fa-expand";
+                texto.innerText = "Expandir";
+            }
+            
+            if (map) map.invalidateSize();
         }
 
         async function geocodificar(end) {
@@ -418,7 +500,7 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(pos => {
                     document.getElementById('origemInput').value = `${pos.coords.latitude}, ${pos.coords.longitude}`;
-                    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+                    if (map) map.setView([pos.coords.latitude, pos.coords.longitude], 15);
                 });
             }
         }

@@ -2,7 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { MercadoPagoConfig, Payment, Preference } = require('mercadopago');
+const multer = require('multer');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,10 +14,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
-// Configuração do Mercado Pago (Lê do arquivo .env ou do Render, com fallback para o token inserido)
+// Configuração do Upload em memória (para processar fotos e PDFs)
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Configuração do Mercado Pago
 const client = new MercadoPagoConfig({ 
     accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-3922552857820372-100920-07bc79655acaddc2ab1a10b9fd7e4f7a-71867761' 
 });
+
+// Inicialização do Google Gen AI (Gemini) para leitura de documentos/fotos
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 let licencas = {}; // deviceId -> { expiracao, plano, paymentId }
 let pagamentosPendentes = {}; // paymentId -> deviceId
@@ -53,7 +61,7 @@ app.post('/api/licenca/verificar', (req, res) => {
     });
 });
 
-// 2. Gerar Pagamento PIX Real no Mercado Pago (Atualizado para R$ 20,00)
+// 2. Gerar Pagamento PIX Real no Mercado Pago
 app.post('/api/pagamento/criar-pix', async (req, res) => {
     const { deviceId } = req.body;
     if (!deviceId) return res.status(400).json({ error: 'ID obrigatório.' });
@@ -76,7 +84,6 @@ app.post('/api/pagamento/criar-pix', async (req, res) => {
         const qrCodeBase64 = response.point_of_interaction.transaction_data.qr_code_base64;
         const qrCodeCopiaCola = response.point_of_interaction.transaction_data.qr_code;
 
-        // Associa o ID do pagamento ao deviceId para sabermos quem vai receber a licença
         pagamentosPendentes[paymentId] = deviceId;
 
         res.json({
@@ -92,7 +99,7 @@ app.post('/api/pagamento/criar-pix', async (req, res) => {
     }
 });
 
-// 3. Consultar Status do Pagamento (O app vai ficar checando isso automaticamente)
+// 3. Consultar Status do Pagamento
 app.post('/api/pagamento/verificar-status', async (req, res) => {
     const { paymentId, deviceId } = req.body;
     if (!paymentId || !deviceId) return res.status(400).json({ error: 'Dados incompletos.' });
@@ -102,7 +109,6 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
         const response = await payment.get({ id: paymentId });
 
         if (response.status === 'approved') {
-            // PAGAMENTO APROVADO COM SUCESSO! LIBERA OS 30 DIAS AUTOMATICAMENTE
             let dataExpiracao = new Date();
             if (licencas[deviceId] && new Date(licencas[deviceId].expiracao) > new Date()) {
                 dataExpiracao = new Date(licencas[deviceId].expiracao);
@@ -115,7 +121,6 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
                 ativo: true
             };
 
-            // Remove da lista de pendentes
             delete pagamentosPendentes[paymentId];
 
             return res.json({ aprovado: true, plano: 'Plano 30 Dias', expiracao: dataExpiracao.toISOString() });
@@ -129,6 +134,47 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
     }
 });
 
+// 4. Nova Rota: Extrair Endereços de Foto ou PDF usando Gemini AI[cite: 1]
+app.post('/api/extrair-enderecos', upload.single('arquivo'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'Nenhum arquivo enviado.' });
+        }
+
+        const fileBuffer = req.file.buffer;
+        const mimeType = req.file.mimetype;
+
+        // Converte o arquivo para o formato esperado pelo SDK do Gemini
+        const imagePart = {
+            inlineData: {
+                data: fileBuffer.toString("base64"),
+                mimeType: mimeType
+            },
+        };
+
+        const prompt = `Analise este arquivo (imagem ou PDF) e extraia todos os endereços de entrega listados nele. 
+Retorne APENAS um array JSON puro contendo strings com os endereços limpos (ex: ["Rua A, 123 - Bairro - Cidade", "Av B, 456"]). 
+Não inclua nenhum texto adicional fora do array JSON. Se não encontrar endereços, retorne [].`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [prompt, imagePart]
+        });
+
+        const textoResposta = response.text.trim();
+        // Limpa possíveis marcações de bloco de código markdown caso o modelo retorne
+        const jsonString = textoResposta.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        const enderecos = JSON.parse(jsonString);
+
+        res.json({ success: true, enderecos });
+
+    } catch (error) {
+        console.error("Erro ao extrair endereços com IA:", error);
+        res.status(500).json({ success: false, error: 'Erro ao processar o arquivo com Inteligência Artificial.' });
+    }
+});
+
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor RotaFácil (Modo Real) rodando em http://localhost:${PORT}`);
+    console.log(`🚀 Servidor RotaFácil rodando em http://localhost:${PORT}`);
 });
