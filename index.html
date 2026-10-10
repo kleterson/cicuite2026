@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RotaFácil - Otimizador Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        input { font-size: 16px !important; }
+        #listaDestinos::-webkit-scrollbar { width: 6px; }
+        #listaDestinos::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 3px; }
+        #listaDestinos::-webkit-scrollbar-track { background: transparent; }
+        
+        #map { height: 260px; width: 100%; border-radius: 1rem; z-index: 1; transition: all 0.3s ease; }
+        .mapa-fullscreen { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; border-radius: 0 !important; }
+
+        @keyframes pulse-mic {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .escutando { animation: pulse-mic 1.5s infinite; background-color: #dc2626 !important; color: white !important; }
+
+        #sidebar { transform: translateX(-100%); transition: transform 0.3s ease-in-out; }
+        #sidebar.open { transform: translateX(0); }
+        #sidebarOverlay { opacity: 0; pointer-events: none; transition: opacity 0.3s ease-in-out; }
+        #sidebarOverlay.open { opacity: 1; pointer-events: auto; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-2 md:p-4 font-sans antialiased relative overflow-x-hidden">
+
+    <div id="sidebarOverlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/70 z-40"></div>
+
+    <!-- MENU LATERAL -->
+    <aside id="sidebar" class="fixed top-0 left-0 w-72 h-full bg-slate-900 border-r border-slate-800 z-50 p-5 flex flex-col justify-between shadow-2xl">
+        <div class="space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="bg-emerald-950 border border-emerald-700 p-2 rounded-xl">
+                        <i class="fa-solid fa-gauge text-emerald-400"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-slate-100">Painel do Usuário</h2>
+                </div>
+                <button onclick="toggleMenu()" class="text-slate-400 hover:text-white p-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/60 space-y-2">
+                <div class="text-xs text-slate-400 font-semibold uppercase">Status da Assinatura</div>
+                <div id="statusPlanoMenu" class="text-sm font-bold text-emerald-400">Carregando...</div>
+                <div class="text-xs text-slate-300">Seu ID: <span id="menuDeviceId" class="text-sky-400 font-mono text-[11px]">...</span></div>
+            </div>
+
+            <nav class="space-y-2">
+                <a href="#" onclick="toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl bg-slate-800/80 text-emerald-400 font-medium text-sm transition-all"><i class="fa-solid fa-route w-5"></i> Gerenciar Rotas</a>
+                <a href="#" onclick="iniciarPagamentoPix(); toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl text-amber-300 hover:bg-amber-950/40 font-bold text-sm transition-all border border-amber-500/30"><i class="fa-solid fa-qrcode w-5"></i> Pagar Pix (30 Dias)</a>
+            </nav>
+        </div>
+        <div class="border-t border-slate-800 pt-4 text-xs text-slate-500 text-center">RotaFácil &bull; v2.0 Real</div>
+    </aside>
+
+    <!-- MODAL PIX REAL -->
+    <div id="modalPagamento" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl relative text-center">
+            <button onclick="fecharModalPagamento()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <div class="space-y-1">
+                <h3 class="text-lg font-bold text-emerald-300">Pix - R$ 29,90</h3>
+                <p class="text-xs text-slate-400">Escaneie o QR Code abaixo com o app do seu banco.</p>
+            </div>
+
+            <!-- Imagem QR Code Real -->
+            <div class="bg-white p-3 rounded-2xl inline-block">
+                <img id="imgQrCode" src="" alt="Gerando QR Code..." class="w-44 h-44 mx-auto">
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-[11px] font-bold text-slate-400 uppercase">Pix Copia e Cola</label>
+                <div class="flex gap-2">
+                    <input type="text" id="pixCopiaCola" readonly class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 w-full font-mono">
+                    <button onclick="copiarPix()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 rounded-xl text-xs"><i class="fa-solid fa-copy"></i></button>
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-800 flex items-center justify-center gap-2 text-xs text-amber-400">
+                <i class="fa-solid fa-spinner animate-spin"></i>
+                <span id="statusAguardando">Aguardando confirmação do pagamento...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTAINER PRINCIPAL -->
+    <div id="appContainer" class="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 shadow-2xl shadow-black/20 space-y-4">
+        
+        <header class="flex flex-col gap-3 border-b border-slate-800 pb-3">
+            <div class="flex items-center justify-between">
+                <button onclick="toggleMenu()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-3 rounded-2xl transition-all shadow-inner active:scale-95"><i class="fa-solid fa-bars text-base"></i></button>
+                <div class="text-center">
+                    <h1 class="text-xl font-extrabold tracking-tighter text-emerald-300">RotaFácil</h1>
+                    <p class="text-[11px] text-slate-500 font-medium">Otimização Sequencial por Proximidade</p>
+                </div>
+                <div class="w-10"></div>
+            </div>
+
+            <div class="bg-slate-950/80 border border-slate-800 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2 text-slate-400"><i class="fa-solid fa-clock text-amber-400 animate-pulse"></i><span>Expira em:</span></div>
+                <div id="cronometroDisplay" class="font-bold text-amber-300 tracking-wider font-mono text-sm">Calculando...</div>
+            </div>
+        </header>
+
+        <!-- TELA DE BLOQUEIO -->
+        <div id="telaBloqueio" class="hidden text-center py-12 px-4 space-y-4 bg-slate-950/90 rounded-2xl border border-red-500/30">
+            <div class="text-red-400 text-5xl"><i class="fa-solid fa-hourglass-end"></i></div>
+            <h2 class="text-lg font-bold text-white">Sua licença expirou!</h2>
+            <p class="text-xs text-slate-400">Faça o pagamento via Pix para renovar seu acesso por mais 30 dias instantaneamente.</p>
+            <button onclick="iniciarPagamentoPix()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl text-xs shadow-lg">Pagar Pix Agora</button>
+        </div>
+
+        <div id="conteudoApp" class="space-y-4">
+            <section class="bg-slate-800/60 p-3.5 rounded-2xl border border-slate-700/60 space-y-2">
+                <label for="origemInput" class="text-xs font-bold text-slate-300 flex items-center gap-2 uppercase"><i class="fa-solid fa-location-arrow text-sky-400"></i> Ponto de Partida</label>
+                <div class="flex gap-2">
+                    <input type="text" id="origemInput" placeholder="Ex: Rua Atual ou Deixe em branco" class="flex-grow bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-sky-500 shadow-sm">
+                    <button onclick="ouvirVoz('origemInput', this)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 w-12 h-12 rounded-xl flex items-center justify-center shrink-0"><i class="fa-solid fa-microphone text-sm"></i></button>
+                    <button onclick="usarLocalizacaoAtual()" id="btnGps" class="bg-slate-700 hover:bg-slate-600 text-sky-300 w-12 h-12 rounded-xl flex items-center justify-center shrink-0"><i class="fa-solid fa-crosshairs text-base"></i></button>
+                </div>
+            </section>
+
+            <section class="bg-slate-800/60 p-3.5 rounded-2xl border border-slate-700/60 space-y-2">
+                <label for="destinoInput" class="text-xs font-bold text-slate-300 flex items-center gap-2 uppercase"><i class="fa-solid fa-map-pin text-emerald-400"></i> Adicionar Destinos</label>
+                <div class="flex gap-2">
+                    <input type="text" id="destinoInput" placeholder="Ex: Av. Paulista, 1000" class="flex-grow bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-emerald-500 shadow-sm" onkeypress="if(event.key === 'Enter') adicionarDestino()">
+                    <button onclick="ouvirVoz('destinoInput', this)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 w-12 h-12 rounded-xl flex items-center justify-center shrink-0"><i class="fa-solid fa-microphone text-sm"></i></button>
+                    <button onclick="adicionarDestino()" class="bg-emerald-600 hover:bg-emerald-500 text-white w-12 h-12 rounded-xl font-bold text-lg flex items-center justify-center shrink-0 shadow-md"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </section>
+
+            <section class="space-y-3">
+                <div class="grid grid-cols-3 gap-2.5">
+                    <button onclick="otimizarRota()" id="btnOtimizar" class="col-span-3 bg-sky-600 hover:bg-sky-500 text-white font-bold py-3.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg transition-all"><i class="fa-solid fa-wand-magic-sparkles"></i><span id="textOtimizar">Organizar e Otimizar Rota</span></button>
+                    <button onclick="abrirGoogleMaps()" class="col-span-1 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md"><i class="fa-solid fa-map-location-dot"></i> Maps</button>
+                    <button onclick="abrirWaze()" class="col-span-1 bg-blue-700 hover:bg-blue-600 text-white font-semibold py-3 px-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md"><i class="fa-brands fa-waze"></i> Waze</button>
+                    <button onclick="limparTudo()" class="col-span-1 bg-slate-700 hover:bg-red-950 text-slate-300 font-semibold py-3 px-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md"><i class="fa-solid fa-trash"></i> Limpar</button>
+                </div>
+                <div class="flex items-center justify-between bg-slate-950/60 px-3.5 py-2.5 rounded-xl border border-slate-800 text-xs font-medium">
+                    <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-road text-sky-400"></i><span>Distância: <strong id="distanciaTotal" class="text-white text-sm">0.0 km</strong></span></div>
+                    <span id="contadorParadas" class="bg-slate-800 text-slate-200 px-2.5 py-1 rounded-full font-bold">0 Paradas</span>
+                </div>
+            </section>
+
+            <section class="space-y-1.5 relative">
+                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase px-1">
+                    <span class="flex items-center gap-1"><i class="fa-solid fa-map text-emerald-400"></i> Mapa da Rota</span>
+                    <button onclick="alternarTelaCheiaMapa()" id="btnFullMap" class="text-sky-400 hover:text-sky-300 flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg"><i class="fa-solid fa-expand"></i> Expandir</button>
+                </div>
+                <div id="map" class="border border-slate-700 shadow-inner"></div>
+            </section>
+
+            <section class="space-y-2">
+                <div class="text-xs text-slate-400 px-1 font-semibold uppercase"><span class="flex items-center gap-1"><i class="fa-solid fa-list-ol"></i> Sequência Sugerida</span></div>
+                <div id="listaDestinos" class="space-y-2 max-h-[200px] overflow-y-auto pr-1"></div>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
+        let map, markersLayer, polylineLayer;
+        let tempoRestanteMsGlobal = 0;
+        let intervaloVerificacaoPix = null;
+        let deviceId = localStorage.getItem('rotaFacilDeviceId');
+        if (!deviceId) { deviceId = 'dev_' + Math.random().toString(36).substring(2, 15); localStorage.setItem('rotaFacilDeviceId', deviceId); }
+
+        window.onload = function() {
+            document.getElementById('menuDeviceId').innerText = deviceId;
+            verificarLicenca();
+            inicializarMapa();
+            atualizarLista();
+            setInterval(() => {
+                if (tempoRestanteMsGlobal > 0) { tempoRestanteMsGlobal -= 1000; exibirCronômetro(tempoRestanteMsGlobal); }
+            }, 1000);
+        };
+
+        function toggleMenu() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebarOverlay').classList.toggle('open');
+        }
+
+        function abrirModalPagamento() { document.getElementById('modalPagamento').classList.remove('hidden'); }
+        function fecharModalPagamento() { 
+            document.getElementById('modalPagamento').classList.add('hidden'); 
+            if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
+        }
+
+        function copiarPix() {
+            navigator.clipboard.writeText(document.getElementById('pixCopiaCola').value);
+            alert("📋 Chave Pix copiada!");
+        }
+
+        // GERA O PIX REAL E INICIA O POLLING AUTOMÁTICO
+        function iniciarPagamentoPix() {
+            abrirModalPagamento();
+            document.getElementById('statusAguardando').innerText = "Gerando QR Code Pix...";
+
+            fetch('/api/pagamento/criar-pix', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('imgQrCode').src = `data:image/png;base64,${data.qrCodeBase64}`;
+                    document.getElementById('pixCopiaCola').value = data.qrCodeCopiaCola;
+                    document.getElementById('statusAguardando').innerText = "Aguardando confirmação do pagamento...";
+
+                    // Fica checando a cada 4 segundos se o pagamento foi aprovado no banco
+                    if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
+                    intervaloVerificacaoPix = setInterval(() => {
+                        verificarStatusPagamento(data.paymentId);
+                    }, 4000);
+                } else {
+                    alert("Erro ao gerar Pix.");
+                }
+            });
+        }
+
+        function verificarStatusPagamento(paymentId) {
+            fetch('/api/pagamento/verificar-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paymentId, deviceId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.aprovado) {
+                    clearInterval(intervaloVerificacaoPix);
+                    alert("🎉 Pagamento aprovado! 30 dias de acesso liberados com sucesso.");
+                    fecharModalPagamento();
+                    location.reload();
+                }
+            });
+        }
+
+        async function verificarLicenca() {
+            try {
+                const response = await fetch('/api/licenca/verificar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId })
+                });
+                const data = await response.json();
+                if (data.status === 'expirado') {
+                    document.getElementById('telaBloqueio').classList.remove('hidden');
+                    document.getElementById('conteudoApp').classList.add('hidden');
+                    document.getElementById('cronometroDisplay').innerText = "EXPIRADO";
+                    document.getElementById('statusPlanoMenu').innerText = "Expirado";
+                } else {
+                    tempoRestanteMsGlobal = data.tempoRestanteMs;
+                    document.getElementById('statusPlanoMenu').innerText = data.plano;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function exibirCronômetro(ms) {
+            if (ms <= 0) { document.getElementById('cronometroDisplay').innerText = "EXPIRADO"; verificarLicenca(); return; }
+            let segundos = Math.floor((ms / 1000) % 60);
+            let minutos = Math.floor((ms / (1000 * 60)) % 60);
+            let horas = Math.floor((ms / (1000 * 60 * 60)) % 24);
+            let dias = Math.floor(ms / (1000 * 60 * 60 * 24));
+            let texto = `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
+            if (dias > 0) texto = `${dias}d ` + texto;
+            document.getElementById('cronometroDisplay').innerText = texto;
+        }
+
+        function inicializarMapa() {
+            map = L.map('map').setView([-23.550520, -46.633308], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+            redrawMapMarkers();
+        }
+
+        function salvarDados() { localStorage.setItem('rotaFacilDestinos', JSON.stringify(destinos)); }
+
+        function ouvirVoz(inputId, btnElement) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) { alert("Navegador sem suporte a voz."); return; }
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'pt-BR'; recognition.interimResults = true;
+            btnElement.classList.add('escutando');
+            let textoFinal = "";
+            recognition.onresult = (e) => {
+                let interim = "";
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) textoFinal += e.results[i][0].transcript;
+                    else interim += e.results[i][0].transcript;
+                }
+                document.getElementById(inputId).value = textoFinal + interim;
+            };
+            recognition.onend = () => {
+                btnElement.classList.remove('escutando');
+                if (inputId === 'destinoInput' && document.getElementById(inputId).value.trim() !== "") adicionarDestino();
+            };
+            recognition.start();
+        }
+
+        function adicionarDestino() {
+            const input = document.getElementById('destinoInput');
+            const valor = input.value.trim();
+            if (!valor) return;
+            destinos.push({ endereco: valor, lat: null, lon: null, id: Date.now() });
+            input.value = '';
+            salvarDados();
+            atualizarLista();
+            geocodificar(valor).then(coords => {
+                if (coords) {
+                    const idx = destinos.findIndex(d => d.id === destinos[destinos.length - 1].id);
+                    if (idx !== -1) { destinos[idx].lat = coords.lat; destinos[idx].lon = coords.lon; salvarDados(); redrawMapMarkers(); }
+                }
+            });
+        }
+
+        function removerDestino(index) { destinos.splice(index, 1); salvarDados(); atualizarLista(); redrawMapMarkers(); }
+        function limparTudo() { if(confirm("Apagar tudo?")) { destinos = []; document.getElementById('origemInput').value = ''; salvarDados(); atualizarLista(); redrawMapMarkers(); document.getElementById('distanciaTotal').innerText = '0.0 km'; } }
+
+        function atualizarLista() {
+            const container = document.getElementById('listaDestinos');
+            document.getElementById('contadorParadas').innerText = `${destinos.length} Paradas`;
+            if (destinos.length === 0) {
+                container.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs border border-dashed border-slate-700/70 rounded-xl">Nenhum endereço adicionado.</div>`;
+                return;
+            }
+            container.innerHTML = '';
+            destinos.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between bg-slate-800/90 border border-slate-700/70 p-2.5 rounded-xl text-xs gap-2";
+                div.innerHTML = `<div class="flex items-center gap-2.5"><div class="bg-sky-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold">${index + 1}</div><span class="truncate text-slate-100">${item.endereco}</span></div><button onclick="removerDestino(${index})" class="text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>`;
+                container.appendChild(div);
+            });
+        }
+
+        function redrawMapMarkers() {
+            if (!map) return;
+            markersLayer.clearLayers();
+            if (polylineLayer) map.removeLayer(polylineLayer);
+            let latLngs = [];
+            destinos.forEach((item, index) => {
+                if (item.lat && item.lon) {
+                    const icon = L.divIcon({
+                        className: 'custom-icon',
+                        html: `<div style="background-color: #0284c7; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; border: 2px solid white;">${index + 1}</div>`,
+                        iconSize: [28, 28], iconAnchor: [14, 14]
+                    });
+                    markersLayer.addLayer(L.marker([item.lat, item.lon], { icon }).bindPopup(`Parada ${index + 1}: ${item.endereco}`));
+                    latLngs.push([item.lat, item.lon]);
+                }
+            });
+            if (latLngs.length > 0) {
+                polylineLayer = L.polyline(latLngs, { color: '#38bdf8', weight: 4 }).addTo(map);
+                map.fitBounds(polylineLayer.getBounds(), { padding: [40, 40] });
+            }
+            setTimeout(() => { map.invalidateSize(); }, 200);
+        }
+
+        function alternarTelaCheiaMapa() {
+            document.getElementById('map').classList.toggle('mapa-fullscreen');
+            map.invalidateSize();
+        }
+
+        async function geocodificar(end) {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(end + ', Brasil')}&limit=1`);
+                const data = await res.json();
+                if (data && data.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+            } catch (e) {}
+            return null;
+        }
+
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        async function otimizarRota() {
+            if (destinos.length < 2) { alert("Adicione pelo menos 2 endereços."); return; }
+            for (let item of destinos) {
+                if (!item.lat || !item.lon) {
+                    const coords = await geocodificar(item.endereco);
+                    if (coords) { item.lat = coords.lat; item.lon = coords.lon; }
+                }
+            }
+            let validos = destinos.filter(d => d.lat !== null);
+            if (validos.length < 2) return;
+            let atual = validos[0], naoVisitados = validos.slice(1), rota = [atual], distTotal = 0;
+            while (naoVisitados.length > 0) {
+                let maisProx = naoVisitados[0], menorD = calcularDistancia(atual.lat, atual.lon, maisProx.lat, maisProx.lon), idx = 0;
+                for (let i = 1; i < naoVisitados.length; i++) {
+                    let d = calcularDistancia(atual.lat, atual.lon, naoVisitados[i].lat, naoVisitados[i].lon);
+                    if (d < menorD) { menorD = d; maisProx = naoVisitados[i]; idx = i; }
+                }
+                distTotal += menorD; rota.push(maisProx); atual = maisProx; naoVisitados.splice(idx, 1);
+            }
+            destinos = rota; salvarDados(); atualizarLista(); redrawMapMarkers();
+            document.getElementById('distanciaTotal').innerText = `${distTotal.toFixed(1)} km`;
+        }
+
+        function abrirGoogleMaps() {
+            if (destinos.length === 0) return;
+            let url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinos[destinos.length-1].endereco)}`;
+            if (destinos.length > 1) url += `&waypoints=` + destinos.slice(0, destinos.length-1).map(d => encodeURIComponent(d.endereco)).join('|');
+            window.open(url, '_blank');
+        }
+
+        function abrirWaze() { if (destinos.length > 0) window.open(`https://waze.com/ul?q=${encodeURIComponent(destinos[0].endereco)}&navigate=yes`, '_blank'); }
+
+        function usarLocalizacaoAtual() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('origemInput').value = `${pos.coords.latitude}, ${pos.coords.longitude}`;
+                    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
