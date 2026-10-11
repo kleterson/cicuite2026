@@ -221,12 +221,18 @@
 
                 <div class="flex gap-2 items-center bg-slate-50/80 p-2 rounded-xl border border-slate-200">
                     <button onclick="usarLocalizacaoAtual()" id="btnGps" class="text-blue-600 hover:text-blue-700 px-2 py-1 text-xs font-bold flex items-center gap-1"><i class="fa-solid fa-crosshairs"></i> GPS</button>
-                    <input type="text" id="origemInput" placeholder="Ponto de Partida..." class="flex-grow bg-transparent text-xs text-slate-700 outline-none">
+                    <input type="text" id="origemInput" placeholder="Sua localização atual..." class="flex-grow bg-transparent text-xs text-slate-700 outline-none">
                     
                     <label for="fileImport" class="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm">
                         <i class="fa-solid fa-file-arrow-up"></i> Excel
                     </label>
                     <input type="file" id="fileImport" name="arquivo" accept="image/*,application/pdf,.xlsx,.xls,.csv" class="hidden" onchange="importarArquivoEnderecos(event)">
+                </div>
+
+                <!-- MOSTRADOR DE MOVIMENTOS DO CARRO NO DASHBOARD -->
+                <div class="flex items-center justify-between bg-blue-50/60 border border-blue-100 px-3 py-1.5 rounded-xl text-[11px] text-blue-800 font-medium">
+                    <span>Movimentos do carro:</span>
+                    <strong id="contadorMovimentos" class="font-mono text-blue-600">0</strong>
                 </div>
 
                 <div class="space-y-1.5">
@@ -247,7 +253,9 @@
         let markersList = [];
         let markerEntregador = null; 
         let watchId = null;
-        let primeiraCentralizacaoGPS = false; // Controla para não puxar o mapa se você estiver a mexer nele
+        let primeiraCentralizacaoGPS = false;
+        let contadorMovimentosCarro = 0; 
+        let ultimoTempoBuscaRua = 0; // Proteção anti-spam contra erro 429 da API
         let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
         let tempoRestanteMsGlobal = 0;
         let intervaloVerificacaoPix = null;
@@ -826,17 +834,17 @@
             }
         }
 
-        // BOTÃO GPS: RASTREAMENTO EM TEMPO REAL SEM INTERFERIR QUANDO MEXE NO MAPA
+        // BOTÃO GPS: RASTREAMENTO SEGURO (PROTEGIDO CONTRA ERRO 429)
         function usarLocalizacaoAtual() {
             const inputOrigem = document.getElementById('origemInput');
-            inputOrigem.value = "A obter localização em tempo real...";
+            inputOrigem.value = "A obter localização...";
             
             if (navigator.geolocation) {
                 if (watchId !== null) {
                     navigator.geolocation.clearWatch(watchId);
                 }
 
-                primeiraCentralizacaoGPS = false; // Permite centralizar apenas na primeira resposta do GPS
+                primeiraCentralizacaoGPS = false; 
 
                 watchId = navigator.geolocation.watchPosition(async (pos) => {
                     const lat = pos.coords.latitude;
@@ -844,7 +852,9 @@
                     
                     if (!lat || !lon) return;
 
-                    // Atualiza ou cria o carrinho na posição nova
+                    contadorMovimentosCarro++;
+                    document.getElementById('contadorMovimentos').innerText = contadorMovimentosCarro;
+
                     if (!markerEntregador) {
                         const elHtml = document.createElement('div');
                         elHtml.className = 'entregador-marker';
@@ -861,22 +871,28 @@
                         markerEntregador.setLngLat([lon, lat]);
                     }
 
-                    // CENTRALIZA APENAS NA PRIMEIRA VEZ. Se você mexer no mapa depois, ele NÃO puxa mais!
                     if (!primeiraCentralizacaoGPS) {
                         map.flyTo({ center: [lon, lat], zoom: 17, speed: 1.5 });
                         primeiraCentralizacaoGPS = true;
                     }
 
-                    try {
-                        let res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
-                        let data = await res.json();
-                        if (data && data.display_name) {
-                            inputOrigem.value = data.display_name;
-                        } else {
-                            inputOrigem.value = `${lat}, ${lon}`;
+                    // Apenas busca o nome da rua a cada 15 segundos para evitar o erro 429 da API gratuita
+                    const agora = Date.now();
+                    if (agora - ultimoTempoBuscaRua > 15000 || inputOrigem.value.includes("A obter")) {
+                        ultimoTempoBuscaRua = agora;
+                        try {
+                            let res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+                            if (res.ok) {
+                                let data = await res.json();
+                                if (data && data.address) {
+                                    let rua = data.address.road || data.address.pedestrian || data.address.suburb || 'Localização em movimento';
+                                    let bairro = data.address.suburb || data.address.city_district || '';
+                                    inputOrigem.value = bairro ? `${rua}, ${bairro}` : rua;
+                                }
+                            }
+                        } catch (e) {
+                            // Se falhar ou der 429, silencia o erro e mantém o fluxo sem travar o app
                         }
-                    } catch (e) {
-                        inputOrigem.value = `${lat}, ${lon}`;
                     }
                 }, (err) => {
                     alert("Erro ao aceder ao GPS em tempo real.");
