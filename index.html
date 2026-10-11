@@ -21,6 +21,11 @@
         
         #map { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
 
+        /* Estilo para deixar o mapa mais limpo e claro (estilo CartoDB Positron - Tons Brancos/Cinza Claro) */
+        .leaflet-tile {
+            filter: contrast(95%) brightness(102%) saturate(85%);
+        }
+
         @keyframes pulse-mic {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
             70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
@@ -37,6 +42,21 @@
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease-in-out;
+        }
+
+        #painelConteudo {
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            opacity: 1;
+        }
+
+        #painelConteudo.colapsado {
+            max-height: 0px;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
         }
 
         #modalPagamento { z-index: 999999 !important; }
@@ -145,41 +165,51 @@
 
     <!-- PAINEL FLUTUANTE INFERIOR -->
     <div class="fixed bottom-0 left-0 right-0 z-30 p-3 flex justify-center pointer-events-none">
-        <div class="w-full max-w-md floating-card rounded-3xl p-4 border border-slate-200/80 shadow-2xl space-y-3 pointer-events-auto">
+        <div class="w-full max-w-md floating-card rounded-3xl p-4 border border-slate-200/80 shadow-2xl space-y-3 pointer-events-auto relative">
             
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2 text-xs">
-                <div>
-                    <span class="font-black text-slate-800 text-sm">Painel de Rota</span>
-                    <div class="text-[11px] text-slate-400"><span id="contadorParadas">0 Paradas</span> &bull; Distância: <strong id="distanciaTotal" class="text-slate-600">0.0 km</strong></div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="limparTudo()" class="text-red-500 hover:text-red-700 p-2 text-xs font-semibold flex items-center gap-1"><i class="fa-solid fa-trash"></i> Limpar</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2">
-                <button onclick="navegarProximaParada()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-solid fa-location-arrow"></i> Começar</button>
-                <button onclick="abrirWaze()" class="bg-sky-500 hover:bg-sky-400 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-brands fa-waze"></i> Waze</button>
-                <button onclick="otimizarRota()" id="btnOtimizar" class="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all">
-                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-400"></i><span id="textOtimizar">Otimizar</span>
+            <!-- BOTÃO RETÁTIL (SETINHA NO CENTRO SUPERIOR) -->
+            <div class="absolute -top-3.5 left-1/2 transform -translate-x-1/2">
+                <button onclick="togglePainelRota()" id="btnRetatil" class="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 w-8 h-7 rounded-full shadow-md flex items-center justify-center transition-all text-xs" title="Minimizar / Expandir Painel">
+                    <i id="iconeSeta" class="fa-solid fa-chevron-up"></i>
                 </button>
             </div>
 
-            <div class="flex gap-2 items-center bg-slate-50/80 p-2 rounded-xl border border-slate-200">
-                <button onclick="usarLocalizacaoAtual()" id="btnGps" class="text-blue-600 hover:text-blue-700 px-2 py-1 text-xs font-bold flex items-center gap-1"><i class="fa-solid fa-crosshairs"></i> GPS</button>
-                <input type="text" id="origemInput" placeholder="Ponto de Partida..." class="flex-grow bg-transparent text-xs text-slate-700 outline-none">
-                
-                <label for="fileImport" class="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm">
-                    <i class="fa-solid fa-file-arrow-up"></i> Excel
-                </label>
-                <input type="file" id="fileImport" name="arquivo" accept="image/*,application/pdf,.xlsx,.xls,.csv" class="hidden" onchange="importarArquivoEnderecos(event)">
-            </div>
-
-            <div class="space-y-1.5">
-                <div class="text-[11px] text-slate-400 font-bold uppercase flex justify-between px-1">
-                    <span>Sequência Sugerida</span>
+            <!-- CONTEÚDO DO PAINEL (QUE RETRAI) -->
+            <div id="painelConteudo" class="space-y-3 pt-1">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2 text-xs">
+                    <div>
+                        <span class="font-black text-slate-800 text-sm">Painel de Rota</span>
+                        <div class="text-[11px] text-slate-400"><span id="contadorParadas">0 Paradas</span> &bull; Distância: <strong id="distanciaTotal" class="text-slate-600">0.0 km</strong></div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="limparTudo()" class="text-red-500 hover:text-red-700 p-2 text-xs font-semibold flex items-center gap-1"><i class="fa-solid fa-trash"></i> Limpar</button>
+                    </div>
                 </div>
-                <div id="listaDestinos" class="space-y-1.5 max-h-[140px] overflow-y-auto pr-1"></div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="navegarProximaParada()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-solid fa-location-arrow"></i> Começar</button>
+                    <button onclick="abrirWaze()" class="bg-sky-500 hover:bg-sky-400 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-brands fa-waze"></i> Waze</button>
+                    <button onclick="otimizarRota()" id="btnOtimizar" class="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all">
+                        <i class="fa-solid fa-wand-magic-sparkles text-emerald-400"></i><span id="textOtimizar">Otimizar</span>
+                    </button>
+                </div>
+
+                <div class="flex gap-2 items-center bg-slate-50/80 p-2 rounded-xl border border-slate-200">
+                    <button onclick="usarLocalizacaoAtual()" id="btnGps" class="text-blue-600 hover:text-blue-700 px-2 py-1 text-xs font-bold flex items-center gap-1"><i class="fa-solid fa-crosshairs"></i> GPS</button>
+                    <input type="text" id="origemInput" placeholder="Ponto de Partida..." class="flex-grow bg-transparent text-xs text-slate-700 outline-none">
+                    
+                    <label for="fileImport" class="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-file-arrow-up"></i> Excel
+                    </label>
+                    <input type="file" id="fileImport" name="arquivo" accept="image/*,application/pdf,.xlsx,.xls,.csv" class="hidden" onchange="importarArquivoEnderecos(event)">
+                </div>
+
+                <div class="space-y-1.5">
+                    <div class="text-[11px] text-slate-400 font-bold uppercase flex justify-between px-1">
+                        <span>Sequência Sugerida</span>
+                    </div>
+                    <div id="listaDestinos" class="space-y-1.5 max-h-[140px] overflow-y-auto pr-1"></div>
+                </div>
             </div>
 
         </div>
@@ -202,7 +232,6 @@
             atualizarLista();
             inicializarMapaLeaflet();
             
-            // Se houver um pagamento pendente guardado, retoma a verificação automática ao carregar
             const savedPaymentId = localStorage.getItem('rotaFacilPaymentId');
             if (savedPaymentId) {
                 abrirModalPagamento();
@@ -215,7 +244,6 @@
             }, 1000);
         };
 
-        // Deteta quando o utilizador volta da aplicação do banco
         document.addEventListener("visibilitychange", function() {
             if (!document.hidden) {
                 const savedPaymentId = localStorage.getItem('rotaFacilPaymentId');
@@ -224,6 +252,19 @@
                 }
             }
         });
+
+        function togglePainelRota() {
+            const conteudo = document.getElementById('painelConteudo');
+            const icone = document.getElementById('iconeSeta');
+            conteudo.classList.toggle('colapsado');
+            if (conteudo.classList.contains('colapsado')) {
+                icone.classList.remove('fa-chevron-up');
+                icone.classList.add('fa-chevron-down');
+            } else {
+                icone.classList.remove('fa-chevron-down');
+                icone.classList.add('fa-chevron-up');
+            }
+        }
 
         function copiarMeuId() {
             const idText = document.getElementById('menuDeviceId').innerText;
@@ -240,18 +281,31 @@
         }
 
         function inicializarMapaLeaflet() {
+            if (map) {
+                map.remove();
+            }
+
             map = L.map('map', { 
                 zoomControl: false, 
                 preferCanvas: true,
                 dragging: true,
-                tap: true
+                touchZoom: true,
+                doubleClickZoom: true,
+                boxZoom: true,
+                tap: true,
+                inertia: true,
+                inertiaDeceleration: 3000
             }).setView([-23.550520, -46.633308], 13);
             
             L.control.zoom({ position: 'topright' }).addTo(map);
 
+            // Camada OpenStreetMap com filtro de brilho/contraste no CSS para ficar um visual branco e limpo
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors',
-                maxZoom: 19
+                maxZoom: 19,
+                subdomains: ['a', 'b', 'c'],
+                updateWhenIdle: true,
+                updateWhenZooming: false
             }).addTo(map);
 
             markersLayer = L.layerGroup().addTo(map);
@@ -299,8 +353,6 @@
                     document.getElementById('imgQrCode').src = `data:image/png;base64,${data.qrCodeBase64}`;
                     document.getElementById('pixCopiaCola').value = data.qrCodeCopiaCola;
                     document.getElementById('statusAguardando').innerText = "A aguardar confirmação do pagamento...";
-
-                    // Guarda o ID do pagamento no localStorage para não perder ao sair para o banco
                     localStorage.setItem('rotaFacilPaymentId', data.paymentId);
 
                     if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
@@ -338,7 +390,6 @@
                     clearInterval(intervaloVerificacaoPix);
                     localStorage.removeItem('rotaFacilPaymentId');
                     
-                    // Exibe mensagem visível de sucesso na modal antes de recarregar
                     document.getElementById('statusAguardando').innerHTML = `<span class="text-emerald-600 font-bold">🎉 Pagamento Aprovado! A ativar 30 dias...</span>`;
                     const spinner = document.getElementById('spinnerAguardando');
                     if (spinner) spinner.classList.remove('animate-spin');
