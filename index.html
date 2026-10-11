@@ -255,7 +255,7 @@
         let watchId = null;
         let primeiraCentralizacaoGPS = false;
         let contadorMovimentosCarro = 0; 
-        let ultimoTempoBuscaRua = 0; // Proteção anti-spam contra erro 429 da API
+        let ultimoTempoBuscaRua = 0;
         let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
         let tempoRestanteMsGlobal = 0;
         let intervaloVerificacaoPix = null;
@@ -708,6 +708,7 @@
             return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
         }
 
+        // OTIMIZAÇÃO DE ROTA BLINDADA A PARTIR DA LOCALIZAÇÃO EXATA DO CARRINHO
         async function otimizarRota() {
             if (destinos.length < 2) { 
                 alert("Adicione pelo menos 2 endereços."); 
@@ -734,76 +735,54 @@
             btnOtimizar.innerHTML = textoOriginal;
             btnOtimizar.disabled = false;
 
-            let validos = destinos.filter(d => d.lat !== null);
+            let validos = destinos.filter(d => d.lat !== null && d.lon !== null);
             if (validos.length < 2) {
                 alert("Não foi possível obter coordenadas suficientes.");
                 return;
             }
 
-            let origemLat = null, origemLon = null;
-            let origemStr = document.getElementById('origemInput').value.trim();
-            
-            if (origemStr && origemStr.includes(',')) {
-                let partes = origemStr.split(',');
-                let pLat = parseFloat(partes[0]), pLon = parseFloat(partes[1]);
-                if (!isNaN(pLat) && !isNaN(pLon)) {
-                    origemLat = pLat;
-                    origemLon = pLon;
-                }
-            }
+            // Ponto de partida rigoroso: Usa a posição exata do carrinho no mapa
+            let pontoAtualLat = null;
+            let pontoAtualLon = null;
 
-            if (!origemLat && origemStr) {
-                let coordsOrigem = await geocodificarComAtraso(origemStr);
-                if (coordsOrigem) {
-                    origemLat = coordsOrigem.lat;
-                    origemLon = coordsOrigem.lon;
-                }
+            if (markerEntregador) {
+                const lngLat = markerEntregador.getLngLat();
+                pontoAtualLat = lngLat.lat;
+                pontoAtualLon = lngLat.lng;
+            } else {
+                pontoAtualLat = validos[0].lat;
+                pontoAtualLon = validos[0].lon;
             }
 
             let naoVisitados = [...validos];
-            let atual;
-
-            if (origemLat && origemLon) {
-                let maisProxIdx = 0;
-                let menorD = calcularDistancia(origemLat, origemLon, naoVisitados[0].lat, naoVisitados[0].lon);
-                for (let i = 1; i < naoVisitados.length; i++) {
-                    let d = calcularDistancia(origemLat, origemLon, naoVisitados[i].lat, naoVisitados[i].lon);
-                    if (d < menorD) {
-                        menorD = d;
-                        maisProxIdx = i;
-                    }
-                }
-                atual = naoVisitados.splice(maisProxIdx, 1)[0];
-            } else {
-                atual = naoVisitados.shift();
-            }
-
-            let rota = [atual];
+            let rotaOtimizada = [];
             let distTotal = 0;
 
             while (naoVisitados.length > 0) {
-                let maisProx = naoVisitados[0];
-                let menorD = calcularDistancia(atual.lat, atual.lon, maisProx.lat, maisProx.lon);
-                let idx = 0;
+                let maisProximoIndex = 0;
+                let menorDistancia = calcularDistancia(pontoAtualLat, pontoAtualLon, naoVisitados[0].lat, naoVisitados[0].lon);
 
                 for (let i = 1; i < naoVisitados.length; i++) {
-                    let d = calcularDistancia(atual.lat, atual.lon, naoVisitados[i].lat, naoVisitados[i].lon);
-                    if (d < menorD) { 
-                        menorD = d; 
-                        maisProx = naoVisitados[i]; 
-                        idx = i; 
+                    let distanciaAtual = calcularDistancia(pontoAtualLat, pontoAtualLon, naoVisitados[i].lat, naoVisitados[i].lon);
+                    if (distanciaAtual < menorDistancia) {
+                        menorDistancia = distanciaAtual;
+                        maisProximoIndex = i;
                     }
                 }
-                distTotal += menorD; 
-                rota.push(maisProx); 
-                atual = maisProx; 
-                naoVisitados.splice(idx, 1);
+
+                distTotal += menorDistancia;
+                let proximoDestino = naoVisitados.splice(maisProximoIndex, 1)[0];
+                rotaOtimizada.push(proximoDestino);
+
+                pontoAtualLat = proximoDestino.lat;
+                pontoAtualLon = proximoDestino.lon;
             }
-            
-            destinos = rota; 
-            salvarDados(); 
-            atualizarLista(); 
+
+            destinos = rotaOtimizada;
+            salvarDados();
+            atualizarLista();
             redrawMapMarkers();
+            
             document.getElementById('distanciaTotal').innerText = `${distTotal.toFixed(1)} km`;
             alert("✅ Rota otimizada! A Parada 1 é agora a mais próxima de si.");
         }
@@ -818,7 +797,7 @@
             let origemStr = document.getElementById('origemInput').value.trim();
             
             let url = `https://www.google.com/maps/dir/?api=1`;
-            if (origemStr) {
+            if (origemStr && !origemStr.includes("A obter")) {
                 url += `&origin=${encodeURIComponent(origemStr)}`;
             }
             url += `&destination=${encodeURIComponent(proximaParada)}`;
@@ -834,7 +813,7 @@
             }
         }
 
-        // BOTÃO GPS: RASTREAMENTO SEGURO (PROTEGIDO CONTRA ERRO 429)
+        // BOTÃO GPS: RASTREAMENTO EM TEMPO REAL
         function usarLocalizacaoAtual() {
             const inputOrigem = document.getElementById('origemInput');
             inputOrigem.value = "A obter localização...";
@@ -876,7 +855,6 @@
                         primeiraCentralizacaoGPS = true;
                     }
 
-                    // Apenas busca o nome da rua a cada 15 segundos para evitar o erro 429 da API gratuita
                     const agora = Date.now();
                     if (agora - ultimoTempoBuscaRua > 15000 || inputOrigem.value.includes("A obter")) {
                         ultimoTempoBuscaRua = agora;
@@ -890,9 +868,7 @@
                                     inputOrigem.value = bairro ? `${rua}, ${bairro}` : rua;
                                 }
                             }
-                        } catch (e) {
-                            // Se falhar ou der 429, silencia o erro e mantém o fluxo sem travar o app
-                        }
+                        } catch (e) {}
                     }
                 }, (err) => {
                     alert("Erro ao aceder ao GPS em tempo real.");
