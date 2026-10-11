@@ -132,6 +132,14 @@
         <div class="text-red-500 text-6xl"><i class="fa-solid fa-hourglass-end"></i></div>
         <h2 class="text-xl font-bold text-slate-800">A sua licença expirou!</h2>
         <p class="text-sm text-slate-500 max-w-xs">Faça o pagamento via Pix de R$ 20,00 para renovar o acesso por 30 dias.</p>
+        
+        <!-- ID do dispositivo na ecrã de bloqueio -->
+        <div class="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs flex items-center gap-2">
+            <span class="text-slate-400 font-semibold">O seu ID:</span>
+            <span id="bloqueioDeviceId" class="text-blue-600 font-mono text-xs">...</span>
+            <button onclick="copiarIdBloqueio()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded text-[10px] font-bold transition-all"><i class="fa-solid fa-copy"></i> Copiar</button>
+        </div>
+
         <button onclick="iniciarPagamentoPix()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl text-xs shadow-md">Pagar Pix Agora</button>
     </div>
 
@@ -189,6 +197,7 @@
 
         window.onload = function() {
             document.getElementById('menuDeviceId').innerText = deviceId;
+            document.getElementById('bloqueioDeviceId').innerText = deviceId;
             verificarLicenca();
             atualizarLista();
             inicializarMapaLeaflet();
@@ -218,6 +227,13 @@
 
         function copiarMeuId() {
             const idText = document.getElementById('menuDeviceId').innerText;
+            navigator.clipboard.writeText(idText).then(() => {
+                alert("📋 ID copiado para a área de transferência!");
+            });
+        }
+
+        function copiarIdBloqueio() {
+            const idText = document.getElementById('bloqueioDeviceId').innerText;
             navigator.clipboard.writeText(idText).then(() => {
                 alert("📋 ID copiado para a área de transferência!");
             });
@@ -347,6 +363,7 @@
                     document.getElementById('telaBloqueio').classList.remove('hidden');
                     document.getElementById('cronometroDisplay').innerText = "EXPIRADO";
                     document.getElementById('statusPlanoMenu').innerText = "Expirado";
+                    document.getElementById('bloqueioDeviceId').innerText = deviceId;
                 } else {
                     tempoRestanteMsGlobal = data.tempoRestanteMs;
                     document.getElementById('statusPlanoMenu').innerText = data.plano;
