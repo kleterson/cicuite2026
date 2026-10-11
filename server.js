@@ -154,7 +154,7 @@ app.post('/api/pagamento/verificar-status', async (req, res) => {
         return res.json({ aprovado: false, status: response.status });
     } catch (error) {
         console.error("Erro ao consultar status:", error);
-        res.json({ aprovado: false });
+        return res.json({ aprovado: false });
     }
 });
 
@@ -328,7 +328,7 @@ app.post('/api/geocodificar', async (req, res) => {
 
     try {
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco + ', Brasil')}&limit=1`;
-        const response = alt = await fetch(url, {
+        const response = await fetch(url, {
             headers: { 
                 'User-Agent': 'RotaFacilApp/2.3 (contato@rotafacil.com)' 
             }

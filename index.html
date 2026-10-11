@@ -19,7 +19,6 @@
         #listaDestinos::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
         #listaDestinos::-webkit-scrollbar-track { background: transparent; }
         
-        /* Mapa ocupando a tela inteira ao fundo estilo Circuit */
         #map { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
 
         @keyframes pulse-mic {
@@ -45,12 +44,10 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased relative overflow-hidden">
 
-    <!-- MAPA AO FUNDO -->
     <div id="map"></div>
-
     <div id="sidebarOverlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/40 z-40"></div>
 
-    <!-- MENU LATERAL (PAINEL DO UTILIZADOR) -->
+    <!-- MENU LATERAL -->
     <aside id="sidebar" class="fixed top-0 left-0 w-72 h-full bg-white border-r border-slate-200 z-50 p-5 flex flex-col justify-between shadow-2xl">
         <div class="space-y-6">
             <div class="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -93,7 +90,7 @@
             <button onclick="fecharModalPagamento()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             <div class="space-y-1">
                 <h3 class="text-lg font-bold text-slate-800">Pix - R$ 20,00</h3>
-                <p class="text-xs text-slate-500">Faça a leitura do QR Code abaixo com a aplicação do seu banco.</p>
+                <p class="text-xs text-slate-500">Faça a leitura do QR Code ou copie o código abaixo.</p>
             </div>
 
             <div class="bg-slate-50 border border-slate-200 p-3 rounded-2xl inline-block">
@@ -108,14 +105,17 @@
                 </div>
             </div>
 
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-amber-600 font-medium">
-                <i class="fa-solid fa-spinner animate-spin"></i>
-                <span id="statusAguardando">A aguardar confirmação do pagamento...</span>
+            <div class="pt-2 border-t border-slate-100 flex flex-col items-center justify-center gap-2 text-xs text-amber-600 font-medium">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-spinner animate-spin" id="spinnerAguardando"></i>
+                    <span id="statusAguardando">A aguardar confirmação do pagamento...</span>
+                </div>
+                <button onclick="verificarStatusPagamentoManual()" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md w-full">Já fiz o pagamento</button>
             </div>
         </div>
     </div>
 
-    <!-- TOPO FLUTUANTE (BARRA DE PESQUISA) -->
+    <!-- TOPO FLUTUANTE -->
     <header class="fixed top-3 left-3 right-3 z-30 max-w-md mx-auto floating-card rounded-2xl p-3 border border-slate-200/80 shadow-lg flex items-center gap-2">
         <button onclick="toggleMenu()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all"><i class="fa-solid fa-bars"></i></button>
         
@@ -139,7 +139,6 @@
     <div class="fixed bottom-0 left-0 right-0 z-30 p-3 flex justify-center pointer-events-none">
         <div class="w-full max-w-md floating-card rounded-3xl p-4 border border-slate-200/80 shadow-2xl space-y-3 pointer-events-auto">
             
-            <!-- RESUMO DA ROTA -->
             <div class="flex items-center justify-between border-b border-slate-100 pb-2 text-xs">
                 <div>
                     <span class="font-black text-slate-800 text-sm">Painel de Rota</span>
@@ -150,7 +149,6 @@
                 </div>
             </div>
 
-            <!-- BOTÕES DE AÇÃO RÁPIDA -->
             <div class="grid grid-cols-3 gap-2">
                 <button onclick="navegarProximaParada()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-solid fa-location-arrow"></i> Começar</button>
                 <button onclick="abrirWaze()" class="bg-sky-500 hover:bg-sky-400 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"><i class="fa-brands fa-waze"></i> Waze</button>
@@ -159,7 +157,6 @@
                 </button>
             </div>
 
-            <!-- PONTO DE PARTIDA E IMPORTAR EXCEL -->
             <div class="flex gap-2 items-center bg-slate-50/80 p-2 rounded-xl border border-slate-200">
                 <button onclick="usarLocalizacaoAtual()" id="btnGps" class="text-blue-600 hover:text-blue-700 px-2 py-1 text-xs font-bold flex items-center gap-1"><i class="fa-solid fa-crosshairs"></i> GPS</button>
                 <input type="text" id="origemInput" placeholder="Ponto de Partida..." class="flex-grow bg-transparent text-xs text-slate-700 outline-none">
@@ -170,7 +167,6 @@
                 <input type="file" id="fileImport" name="arquivo" accept="image/*,application/pdf,.xlsx,.xls,.csv" class="hidden" onchange="importarArquivoEnderecos(event)">
             </div>
 
-            <!-- LISTA DE PARADAS -->
             <div class="space-y-1.5">
                 <div class="text-[11px] text-slate-400 font-bold uppercase flex justify-between px-1">
                     <span>Sequência Sugerida</span>
@@ -196,10 +192,29 @@
             verificarLicenca();
             atualizarLista();
             inicializarMapaLeaflet();
+            
+            // Se houver um pagamento pendente guardado, retoma a verificação automática ao carregar
+            const savedPaymentId = localStorage.getItem('rotaFacilPaymentId');
+            if (savedPaymentId) {
+                abrirModalPagamento();
+                document.getElementById('statusAguardando').innerText = "A verificar pagamento pendente...";
+                intervaloVerificacaoPix = setInterval(() => { verificarStatusPagamento(savedPaymentId); }, 4000);
+            }
+
             setInterval(() => {
                 if (tempoRestanteMsGlobal > 0) { tempoRestanteMsGlobal -= 1000; exibirCronômetro(tempoRestanteMsGlobal); }
             }, 1000);
         };
+
+        // Deteta quando o utilizador volta da aplicação do banco
+        document.addEventListener("visibilitychange", function() {
+            if (!document.hidden) {
+                const savedPaymentId = localStorage.getItem('rotaFacilPaymentId');
+                if (savedPaymentId) {
+                    verificarStatusPagamento(savedPaymentId);
+                }
+            }
+        });
 
         function copiarMeuId() {
             const idText = document.getElementById('menuDeviceId').innerText;
@@ -209,7 +224,13 @@
         }
 
         function inicializarMapaLeaflet() {
-            map = L.map('map', { zoomControl: false }).setView([-23.550520, -46.633308], 13);
+            map = L.map('map', { 
+                zoomControl: false, 
+                preferCanvas: true,
+                dragging: true,
+                tap: true
+            }).setView([-23.550520, -46.633308], 13);
+            
             L.control.zoom({ position: 'topright' }).addTo(map);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -236,11 +257,15 @@
         function fecharModalPagamento() { 
             document.getElementById('modalPagamento').classList.add('hidden'); 
             if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
+            localStorage.removeItem('rotaFacilPaymentId');
         }
 
         function copiarPix() {
-            navigator.clipboard.writeText(document.getElementById('pixCopiaCola').value);
-            alert("📋 Chave Pix copiada!");
+            const pixInput = document.getElementById('pixCopiaCola');
+            pixInput.select();
+            pixInput.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(pixInput.value);
+            alert("📋 Chave Pix copiada! Vá ao seu banco para pagar.");
         }
 
         function iniciarPagamentoPix() {
@@ -259,6 +284,9 @@
                     document.getElementById('pixCopiaCola').value = data.qrCodeCopiaCola;
                     document.getElementById('statusAguardando').innerText = "A aguardar confirmação do pagamento...";
 
+                    // Guarda o ID do pagamento no localStorage para não perder ao sair para o banco
+                    localStorage.setItem('rotaFacilPaymentId', data.paymentId);
+
                     if (intervaloVerificacaoPix) clearInterval(intervaloVerificacaoPix);
                     intervaloVerificacaoPix = setInterval(() => { verificarStatusPagamento(data.paymentId); }, 4000);
                 } else {
@@ -271,7 +299,18 @@
             });
         }
 
+        function verificarStatusPagamentoManual() {
+            const savedPaymentId = localStorage.getItem('rotaFacilPaymentId');
+            if (savedPaymentId) {
+                document.getElementById('statusAguardando').innerText = "A verificar pagamento...";
+                verificarStatusPagamento(savedPaymentId);
+            } else {
+                alert("Nenhum pagamento pendente encontrado.");
+            }
+        }
+
         function verificarStatusPagamento(paymentId) {
+            if (!paymentId) return;
             fetch('/api/pagamento/verificar-status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -281,11 +320,21 @@
             .then(data => {
                 if (data.aprovado) {
                     clearInterval(intervaloVerificacaoPix);
-                    alert("🎉 Pagamento aprovado! 30 dias liberados.");
-                    fecharModalPagamento();
-                    location.reload();
+                    localStorage.removeItem('rotaFacilPaymentId');
+                    
+                    // Exibe mensagem visível de sucesso na modal antes de recarregar
+                    document.getElementById('statusAguardando').innerHTML = `<span class="text-emerald-600 font-bold">🎉 Pagamento Aprovado! A ativar 30 dias...</span>`;
+                    const spinner = document.getElementById('spinnerAguardando');
+                    if (spinner) spinner.classList.remove('animate-spin');
+
+                    setTimeout(() => {
+                        fecharModalPagamento();
+                        alert("🎉 Pagamento aprovado com sucesso! Os seus 30 dias foram liberados.");
+                        location.reload();
+                    }, 1500);
                 }
-            });
+            })
+            .catch(err => console.error("Erro ao verificar status:", err));
         }
 
         async function verificarLicenca() {
