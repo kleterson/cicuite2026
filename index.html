@@ -28,7 +28,7 @@
         }
         .escutando { animation: pulse-mic 1.5s infinite; background-color: #dc2626 !important; color: white !important; }
 
-        /* Apenas o carro, sem borda azul e sem fundo branco */
+        /* Apenas o carro recortado, limpo e transparente */
         .entregador-marker {
             width: 42px;
             height: 42px;
@@ -246,6 +246,8 @@
         let map;
         let markersList = [];
         let markerEntregador = null; 
+        let watchId = null;
+        let primeiraCentralizacaoGPS = false; // Controla para não puxar o mapa se você estiver a mexer nele
         let destinos = JSON.parse(localStorage.getItem('rotaFacilDestinos')) || [];
         let tempoRestanteMsGlobal = 0;
         let intervaloVerificacaoPix = null;
@@ -824,39 +826,46 @@
             }
         }
 
-        // BOTÃO GPS: CRIA APENAS O CARRINHO SEM NENHUMA BORDA OU FUNDO
+        // BOTÃO GPS: RASTREAMENTO EM TEMPO REAL SEM INTERFERIR QUANDO MEXE NO MAPA
         function usarLocalizacaoAtual() {
             const inputOrigem = document.getElementById('origemInput');
-            inputOrigem.value = "A obter morada da sua localização...";
+            inputOrigem.value = "A obter localização em tempo real...";
             
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                }
+
+                primeiraCentralizacaoGPS = false; // Permite centralizar apenas na primeira resposta do GPS
+
+                watchId = navigator.geolocation.watchPosition(async (pos) => {
                     const lat = pos.coords.latitude;
                     const lon = pos.coords.longitude;
                     
-                    if (!lat || !lon) {
-                        alert("Não foi possível detetar as coordenadas exatas.");
-                        inputOrigem.value = "";
-                        return;
+                    if (!lat || !lon) return;
+
+                    // Atualiza ou cria o carrinho na posição nova
+                    if (!markerEntregador) {
+                        const elHtml = document.createElement('div');
+                        elHtml.className = 'entregador-marker';
+                        elHtml.innerHTML = '<img src="carro.png" alt="Carro">';
+                        elHtml.title = 'Sua localização em tempo real';
+
+                        markerEntregador = new maplibregl.Marker({ 
+                            element: elHtml,
+                            anchor: 'center' 
+                        })
+                        .setLngLat([lon, lat])
+                        .addTo(map);
+                    } else {
+                        markerEntregador.setLngLat([lon, lat]);
                     }
 
-                    if (markerEntregador) {
-                        markerEntregador.remove();
+                    // CENTRALIZA APENAS NA PRIMEIRA VEZ. Se você mexer no mapa depois, ele NÃO puxa mais!
+                    if (!primeiraCentralizacaoGPS) {
+                        map.flyTo({ center: [lon, lat], zoom: 17, speed: 1.5 });
+                        primeiraCentralizacaoGPS = true;
                     }
-
-                    const elHtml = document.createElement('div');
-                    elHtml.className = 'entregador-marker';
-                    elHtml.innerHTML = '<img src="carro.png" alt="Carro">';
-                    elHtml.title = 'Sua localização atual';
-
-                    markerEntregador = new maplibregl.Marker({ 
-                        element: elHtml,
-                        anchor: 'center' 
-                    })
-                    .setLngLat([lon, lat])
-                    .addTo(map);
-
-                    map.flyTo({ center: [lon, lat], zoom: 17, speed: 1.5 });
 
                     try {
                         let res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
@@ -870,12 +879,15 @@
                         inputOrigem.value = `${lat}, ${lon}`;
                     }
                 }, (err) => {
-                    alert("Erro ao aceder ao GPS do dispositivo.");
+                    alert("Erro ao aceder ao GPS em tempo real.");
                     inputOrigem.value = "";
                 }, {
                     enableHighAccuracy: true,
+                    maximumAge: 0,
                     timeout: 10000
                 });
+            } else {
+                alert("O seu navegador não suporta geolocalização.");
             }
         }
     </script>
