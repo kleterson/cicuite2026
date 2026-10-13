@@ -87,6 +87,14 @@
             cursor: pointer;
         }
 
+        /* Cores dos marcadores de status */
+        .custom-marker.entregue {
+            background-color: #16a34a !important; /* Verde */
+        }
+        .custom-marker.insucesso {
+            background-color: #f97316 !important; /* Laranja */
+        }
+
         #modalPagamento { z-index: 999999 !important; }
     </style>
 </head>
@@ -484,7 +492,7 @@
             const valor = input.value.trim();
             if (!valor) return;
             if (destinos.length >= 150) { alert("Limite máximo de 150 paradas atingido."); return; }
-            destinos.push({ endereco: valor, lat: null, lon: null, id: Date.now() });
+            destinos.push({ endereco: valor, lat: null, lon: null, id: Date.now(), status: null });
             input.value = '';
             salvarDados();
             atualizarLista();
@@ -535,7 +543,8 @@
                                             endereco: enderecoCompleto, 
                                             lat: !isNaN(lat) ? lat : null, 
                                             lon: !isNaN(lon) ? lon : null, 
-                                            id: Date.now() + Math.random() 
+                                            id: Date.now() + Math.random(),
+                                            status: null
                                         });
                                     }
                                 }
@@ -576,7 +585,7 @@
                         destinos = [];
                         data.enderecos.forEach(end => {
                             if (destinos.length < 150) {
-                                destinos.push({ endereco: end, lat: null, lon: null, id: Date.now() + Math.random() });
+                                destinos.push({ endereco: end, lat: null, lon: null, id: Date.now() + Math.random(), status: null });
                             }
                         });
                         salvarDados();
@@ -597,6 +606,13 @@
         function removerDestino(index) { destinos.splice(index, 1); salvarDados(); atualizarLista(); redrawMapMarkers(); }
         function limparTudo() { if(confirm("Apagar tudo?")) { destinos = []; document.getElementById('origemInput').value = ''; salvarDados(); atualizarLista(); redrawMapMarkers(); document.getElementById('distanciaTotal').innerText = '0.0 km'; } }
 
+        function definirStatusParada(index, status) {
+            destinos[index].status = status;
+            salvarDados();
+            atualizarLista();
+            redrawMapMarkers();
+        }
+
         function atualizarLista() {
             const container = document.getElementById('listaDestinos');
             document.getElementById('contadorParadas').innerText = `${destinos.length} Paradas`;
@@ -606,9 +622,29 @@
             }
             container.innerHTML = '';
             destinos.forEach((item, index) => {
+                let corFundoItem = "bg-white";
+                let estiloBadge = "bg-blue-600 text-white";
+                
+                if (item.status === 'entregue') {
+                    corFundoItem = "bg-green-50 border-green-200";
+                    estiloBadge = "bg-green-600 text-white";
+                } else if (item.status === 'insucesso') {
+                    corFundoItem = "bg-orange-50 border-orange-200";
+                    estiloBadge = "bg-orange-500 text-white";
+                }
+
                 const div = document.createElement('div');
-                div.className = "flex items-center justify-between bg-white border border-slate-200 p-2 rounded-xl text-xs gap-2 shadow-sm";
-                div.innerHTML = `<div class="flex items-center gap-2"><div class="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0">${index + 1}</div><span class="truncate text-slate-700 font-medium">${item.endereco}</span></div><button onclick="removerDestino(${index})" class="text-slate-300 hover:text-red-500 transition-colors px-1 shrink-0" title="Remover Parada Concluída"><i class="fa-solid fa-trash-can"></i></button>`;
+                div.className = `flex items-center justify-between border border-slate-200 p-2 rounded-xl text-xs gap-2 shadow-sm ${corFundoItem}`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <div class="${estiloBadge} w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0">${index + 1}</div>
+                        <span class="truncate text-slate-700 font-medium">${item.endereco}</span>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        ${item.status === 'entregue' ? '<span class="text-[10px] font-bold text-green-600 bg-green-100 px-1.5 py-0.5 rounded">Entregue</span>' : ''}
+                        ${item.status === 'insucesso' ? '<span class="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded">Insucesso</span>' : ''}
+                        <button onclick="removerDestino(${index})" class="text-slate-300 hover:text-red-500 transition-colors px-1" title="Remover Parada"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>`;
                 container.appendChild(div);
             });
         }
@@ -629,7 +665,25 @@
                     el.className = 'custom-marker';
                     el.innerHTML = `${index + 1}`;
 
-                    const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`<b>Parada ${index + 1}</b><br>${item.endereco}`);
+                    if (item.status === 'entregue') {
+                        el.classList.add('entregue');
+                    } else if (item.status === 'insucesso') {
+                        el.classList.add('insucesso');
+                    }
+
+                    // HTML do Popup com os botões "Entregue" e "Insucesso" adicionados exatamente como pediu
+                    const popupHtml = `
+                        <div style="font-family: sans-serif; font-size: 12px; min-width: 180px;">
+                            <div style="font-weight: bold; margin-bottom: 4px;">Parada ${index + 1}</div>
+                            <div style="margin-bottom: 8px; color: #475569;">${item.endereco}</div>
+                            <div style="display: flex; gap: 6px; border-top: 1px solid #e2e8f0; padding-top: 6px;">
+                                <button onclick="definirStatusParada(${index}, 'entregue')" style="background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; flex: 1;">Entregue</button>
+                                <button onclick="definirStatusParada(${index}, 'insucesso')" style="background-color: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; flex: 1;">Insucesso</button>
+                            </div>
+                        </div>
+                    `;
+
+                    const popup = new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml);
 
                     const marker = new maplibregl.Marker({ element: el })
                         .setLngLat([item.lon, item.lat])
@@ -678,7 +732,7 @@
                 });
             }
 
-            if (coordinates.length > 0) {
+            if (coordinates.length > 0 && markersList.length > 0 && !primeiraCentralizacaoGPS) {
                 const bounds = coordinates.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
                 map.fitBounds(bounds, { padding: 50, maxZoom: 16 });
             }
@@ -741,7 +795,6 @@
                 return;
             }
 
-            // Ponto de partida rigoroso: Usa a posição exata do carrinho no mapa
             let pontoAtualLat = null;
             let pontoAtualLon = null;
 
