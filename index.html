@@ -530,7 +530,7 @@
             const ehExcel = nomeArquivo.endsWith('.xlsx') || nomeArquivo.endsWith('.xls') || nomeArquivo.endsWith('.csv');
 
             if (ehExcel) {
-                alert("📊 A ler a planilha e agrupando pacotes...");
+                alert("📊 A ler a planilha e agrupando por endereço exato...");
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
@@ -543,31 +543,49 @@
                         let mapaParadas = new Map();
 
                         if (json.length > 1) {
+                            let cabecalho = json[0].map(c => String(c || '').trim().toLowerCase());
+                            let idxSeq = cabecalho.findIndex(c => c.includes('seq') || c.includes('pacote'));
+                            let idxStop = cabecalho.findIndex(c => c.includes('stop') || c.includes('parada') || c.includes('par'));
+                            let idxRua = cabecalho.findIndex(c => c.includes('rua') || c.includes('end') || c.includes('address') || c.includes('logradouro'));
+                            let idxCidade = cabecalho.findIndex(c => c.includes('cidade') || c.includes('municipio'));
+                            let idxCep = cabecalho.findIndex(c => c.includes('cep') || c.includes('postal'));
+                            let idxLat = cabecalho.findIndex(c => c.includes('lat'));
+                            let idxLon = cabecalho.findIndex(c => c.includes('lon') || c.includes('lng'));
+
+                            if (idxStop === -1) idxStop = 2;
+                            if (idxSeq === -1) idxSeq = 1;
+                            if (idxRua === -1) idxRua = 4;
+                            if (idxCidade === -1) idxCidade = 6;
+                            if (idxCep === -1) idxCep = 7;
+                            if (idxLat === -1) idxLat = 8;
+                            if (idxLon === -1) idxLon = 9;
+
                             for (let i = 1; i < json.length; i++) {
                                 let linha = json[i];
-                                if (linha) {
-                                    let sequenceNum = String(linha[1] || '').trim();
-                                    let stopNum = String(linha[2] || '').trim();
-                                    let rua = String(linha[4] || '').trim();
-                                    let cidade = String(linha[6] || '').trim();
-                                    let cep = String(linha[7] || '').trim();
-                                    let lat = parseFloat(linha[8]);
-                                    let lon = parseFloat(linha[9]);
+                                if (linha && linha.length > 0) {
+                                    let sequenceNum = String(linha[idxSeq] !== undefined ? linha[idxSeq] : '').trim();
+                                    let stopNum = String(linha[idxStop] !== undefined ? linha[idxStop] : '').trim();
+                                    let rua = String(linha[idxRua] !== undefined ? linha[idxRua] : '').trim();
+                                    let cidade = String(linha[idxCidade] !== undefined ? linha[idxCidade] : '').trim();
+                                    let cep = String(linha[idxCep] !== undefined ? linha[idxCep] : '').trim();
+                                    let lat = parseFloat(linha[idxLat]);
+                                    let lon = parseFloat(linha[idxLon]);
 
-                                    if (rua.length > 3 && stopNum !== '-' && stopNum !== '') {
+                                    if (rua.length > 2 && stopNum !== '' && stopNum !== '-' && stopNum !== 'undefined') {
                                         let enderecoCompleto = `${rua}`;
-                                        if (cidade) enderecoCompleto += `, ${cidade}`;
-                                        if (cep) enderecoCompleto += ` - CEP ${cep}`;
+                                        if (cidade && cidade !== 'undefined') enderecoCompleto += `, ${cidade}`;
+                                        if (cep && cep !== 'undefined') enderecoCompleto += ` - CEP ${cep}`;
 
-                                        let chaveStop = stopNum;
+                                        // CHAVE INTELIGENTE: Combina o Stop com o endereço exato (rua/número) para separar casas diferentes da mesma parada
+                                        let chaveUnica = `${stopNum}_${rua.toLowerCase()}`;
 
-                                        if (mapaParadas.has(chaveStop)) {
-                                            let itemExistente = mapaParadas.get(chaveStop);
+                                        if (mapaParadas.has(chaveUnica)) {
+                                            let itemExistente = mapaParadas.get(chaveUnica);
                                             if (sequenceNum && !itemExistente.sequenceOriginal.includes(sequenceNum)) {
                                                 itemExistente.sequenceOriginal += `, ${sequenceNum}`;
                                             }
                                         } else {
-                                            mapaParadas.set(chaveStop, {
+                                            mapaParadas.set(chaveUnica, {
                                                 endereco: enderecoCompleto,
                                                 lat: !isNaN(lat) ? lat : null,
                                                 lon: !isNaN(lon) ? lon : null,
@@ -588,7 +606,7 @@
                             salvarDados();
                             atualizarLista();
                             redrawMapMarkers();
-                            alert(`✅ ${destinos.length} paradas carregadas com sucesso!`);
+                            alert(`✅ ${destinos.length} paradas e endereços separados com sucesso!`);
                         } else {
                             alert("⚠️ Nenhum endereço válido foi encontrado.");
                         }
@@ -731,25 +749,22 @@
             markersList.forEach(m => m.remove());
             markersList = [];
 
-            // Considera para o desenho da rota apenas os destinos ativos (que não foram entregues nem tiveram insucesso)
             let validos = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
             let todasCoordenadasLinha = [];
             let distanciaTotalKm = 0;
 
             destinos.forEach((item, index) => {
                 if (item.lat && item.lon) {
+                    if (item.status === 'entregue' || item.status === 'insucesso') {
+                        return; 
+                    }
+
                     const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                     const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
                     const el = document.createElement('div');
                     el.className = 'custom-marker';
                     el.innerHTML = `${numeroParada}`;
-
-                    if (item.status === 'entregue') {
-                        el.classList.add('entregue');
-                    } else if (item.status === 'insucesso') {
-                        el.classList.add('insucesso');
-                    }
 
                     const enderecoEscapado = item.endereco.replace(/'/g, "\\'");
 
@@ -828,7 +843,7 @@
                 });
             }
 
-            let todosComCoords = destinos.filter(d => d.lat !== null && d.lon !== null);
+            let todosComCoords = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
             if (todosComCoords.length > 0 && !primeiraCentralizacaoGPS) {
                 let bounds = new maplibregl.LngLatBounds();
                 todosComCoords.forEach(d => bounds.extend([d.lon, d.lat]));
@@ -887,7 +902,6 @@
             btnOtimizar.innerHTML = textoOriginal;
             btnOtimizar.disabled = false;
 
-            // Separa apenas os destinos que ainda NÃO foram entregues e nem deram insucesso
             let pendentes = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
             let concluidos = destinos.filter(d => d.status);
 
@@ -930,13 +944,12 @@
                 pontoAtualLon = proximoDestino.lon;
             }
 
-            // Junta as pendentes otimizadas na frente e mantém as concluídas no final da lista
             destinos = [...rotaOtimizadaPendentes, ...concluidos];
             salvarDados();
             atualizarLista();
             redrawMapMarkers();
             
-            alert("✅ Rota otimizada! Paradas concluídas foram ignoradas e mantidas fora da sequência ativa.");
+            alert("✅ Rota otimizada com sucesso!");
         }
 
         function navegarProximaParada() {
