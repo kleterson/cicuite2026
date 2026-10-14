@@ -759,7 +759,6 @@
             markersList = [];
 
             let validos = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
-            let todasCoordenadasLinha = [];
             let distanciaTotalKm = 0;
 
             destinos.forEach((item, index) => {
@@ -771,13 +770,12 @@
                     const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                     const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
-                    // Verifica se a string de pacotes contém vírgula (ex: "1, 5" ou "10,12") indicando múltiplos pacotes
                     const temMaisDeUmPacote = String(numeroPacote).includes(',');
 
                     const el = document.createElement('div');
                     el.className = 'custom-marker';
                     if (temMaisDeUmPacote) {
-                        el.classList.add('multiplos-pacotes'); // Deixa o marcador roxo no mapa
+                        el.classList.add('multiplos-pacotes'); // Mantém o marcador roxo se houver mais de 1 pacote
                     }
                     el.innerHTML = `${numeroParada}`;
 
@@ -814,49 +812,10 @@
             for (let i = 0; i < validos.length - 1; i++) {
                 let p1 = validos[i];
                 let p2 = validos[i + 1];
-                let segmento = criarCurvaRua(p1.lat, p1.lon, p2.lat, p2.lon);
-                todasCoordenadasLinha.push(...segmento);
                 distanciaTotalKm += calcularDistancia(p1.lat, p1.lon, p2.lat, p2.lon) * 1.3;
             }
 
             document.getElementById('distanciaTotal').innerText = `${distanciaTotalKm.toFixed(1)} km`;
-
-            if (todasCoordenadasLinha.length > 0) {
-                if (map.getSource('route')) {
-                    map.getSource('route').setData({
-                        type: 'Feature',
-                        properties: {},
-                        geometry: { type: 'LineString', coordinates: todasCoordenadasLinha }
-                    });
-                } else {
-                    map.addSource('route', {
-                        type: 'geojson',
-                        data: {
-                            type: 'Feature',
-                            properties: {},
-                            geometry: { type: 'LineString', coordinates: todasCoordenadasLinha }
-                        }
-                    });
-
-                    map.addLayer({
-                        id: 'route',
-                        type: 'line',
-                        source: 'route',
-                        layout: { 'line-join': 'round', 'line-cap': 'round' },
-                        paint: {
-                            'line-color': '#3b82f6',
-                            'line-width': 4,
-                            'line-opacity': 0.5
-                        }
-                    });
-                }
-            } else if (map.getSource('route')) {
-                map.getSource('route').setData({
-                    type: 'Feature',
-                    properties: {},
-                    geometry: { type: 'LineString', coordinates: [] }
-                });
-            }
 
             let todosComCoords = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
             if (todosComCoords.length > 0 && !primeiraCentralizacaoGPS) {
@@ -969,7 +928,7 @@
 
         function navegarProximaParada() {
             let pendentes = destinos.filter(d => !d.status);
-            if (pendentes.length === 0)  {
+            if (pendentes.length === 0) {
                 alert("Não há paradas pendentes na rota!");
                 return;
             }
