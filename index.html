@@ -86,6 +86,10 @@
             cursor: pointer;
         }
 
+        .custom-marker.multiplos-pacotes {
+            background-color: #9333ea !important; /* Cor roxa para mais de 1 pacote */
+        }
+
         .custom-marker.entregue {
             background-color: #16a34a !important;
         }
@@ -576,7 +580,6 @@
                                         if (cidade && cidade !== 'undefined') enderecoCompleto += `, ${cidade}`;
                                         if (cep && cep !== 'undefined') enderecoCompleto += ` - CEP ${cep}`;
 
-                                        // CHAVE INTELIGENTE: Combina o Stop com o endereço exato (rua/número) para separar casas diferentes da mesma parada
                                         let chaveUnica = `${stopNum}_${rua.toLowerCase()}`;
 
                                         if (mapaParadas.has(chaveUnica)) {
@@ -709,6 +712,12 @@
                 const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                 const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
+                // Verifica se tem múltiplos pacotes (vírgula indica mais de um pacote)
+                const temMaisDeUmPacote = String(numeroPacote).includes(',');
+                if (temMaisDeUmPacote && !item.status) {
+                    estiloBadge = "bg-purple-600 text-white";
+                }
+
                 const div = document.createElement('div');
                 div.className = `flex items-center justify-between border border-slate-200 p-2 rounded-xl text-xs gap-2 shadow-sm ${corFundoItem}`;
                 div.innerHTML = `
@@ -762,8 +771,14 @@
                     const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                     const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
+                    // Verifica se a string de pacotes contém vírgula (ex: "1, 5" ou "10,12") indicando múltiplos pacotes
+                    const temMaisDeUmPacote = String(numeroPacote).includes(',');
+
                     const el = document.createElement('div');
                     el.className = 'custom-marker';
+                    if (temMaisDeUmPacote) {
+                        el.classList.add('multiplos-pacotes'); // Deixa o marcador roxo no mapa
+                    }
                     el.innerHTML = `${numeroParada}`;
 
                     const enderecoEscapado = item.endereco.replace(/'/g, "\\'");
@@ -954,7 +969,7 @@
 
         function navegarProximaParada() {
             let pendentes = destinos.filter(d => !d.status);
-            if (pendentes.length === 0) {
+            if (pendentes.length === 0)  {
                 alert("Não há paradas pendentes na rota!");
                 return;
             }
