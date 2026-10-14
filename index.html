@@ -86,8 +86,8 @@
             cursor: pointer;
         }
 
-        .custom-marker.multiplos-pacotes {
-            background-color: #9333ea !important; /* Cor roxa para mais de 1 pacote */
+        .custom-marker.mesmo-endereco {
+            background-color: #dc2626 !important; /* Cor vermelha para mesmo endereço / múltiplos pacotes */
         }
 
         .custom-marker.entregue {
@@ -534,7 +534,7 @@
             const ehExcel = nomeArquivo.endsWith('.xlsx') || nomeArquivo.endsWith('.xls') || nomeArquivo.endsWith('.csv');
 
             if (ehExcel) {
-                alert("📊 A ler a planilha e agrupando por endereço exato...");
+                alert("📊 A ler a planilha e agrupando rigorosamente por endereço...");
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
@@ -580,7 +580,9 @@
                                         if (cidade && cidade !== 'undefined') enderecoCompleto += `, ${cidade}`;
                                         if (cep && cep !== 'undefined') enderecoCompleto += ` - CEP ${cep}`;
 
-                                        let chaveUnica = `${stopNum}_${rua.toLowerCase()}`;
+                                        // CORREÇÃO ROBUSTA: Normaliza totalmente o texto da rua (remove espaços duplos e padroniza minúsculas) para que qualquer variação mínima una perfeitamente
+                                        let ruaLimpa = rua.toLowerCase().replace(/\s+/g, ' ').trim();
+                                        let chaveUnica = ruaLimpa;
 
                                         if (mapaParadas.has(chaveUnica)) {
                                             let itemExistente = mapaParadas.get(chaveUnica);
@@ -609,7 +611,7 @@
                             salvarDados();
                             atualizarLista();
                             redrawMapMarkers();
-                            alert(`✅ ${destinos.length} paradas e endereços separados com sucesso!`);
+                            alert(`✅ ${destinos.length} endereços importados e agrupados perfeitamente!`);
                         } else {
                             alert("⚠️ Nenhum endereço válido foi encontrado.");
                         }
@@ -712,10 +714,10 @@
                 const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                 const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
-                // Verifica se tem múltiplos pacotes (vírgula indica mais de um pacote)
+                // Marca com vermelho se houver múltiplos pacotes/mesmo endereço agrupado
                 const temMaisDeUmPacote = String(numeroPacote).includes(',');
                 if (temMaisDeUmPacote && !item.status) {
-                    estiloBadge = "bg-purple-600 text-white";
+                    estiloBadge = "bg-red-600 text-white";
                 }
 
                 const div = document.createElement('div');
@@ -775,7 +777,7 @@
                     const el = document.createElement('div');
                     el.className = 'custom-marker';
                     if (temMaisDeUmPacote) {
-                        el.classList.add('multiplos-pacotes'); // Mantém o marcador roxo se houver mais de 1 pacote
+                        el.classList.add('mesmo-endereco');
                     }
                     el.innerHTML = `${numeroParada}`;
 
@@ -1002,11 +1004,9 @@
                             let res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
                             if (res.ok) {
                                 let data = await res.json();
-                                if (data && data.address) {
-                                    let rua = data.address.road || data.address.pedestrian || data.address.suburb || 'Localização em movimento';
-                                    let bairro = data.address.suburb || data.address.city_district || '';
-                                    inputOrigem.value = bairro ? `${rua}, ${bairro}` : rua;
-                                }
+                                let rua = data.address.road || data.address.pedestrian || data.address.suburb || 'Localização em movimento';
+                                let bairro = data.address.suburb || data.address.city_district || '';
+                                inputOrigem.value = bairro ? `${rua}, ${bairro}` : rua;
                             }
                         } catch (e) {}
                     }
