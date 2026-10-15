@@ -137,6 +137,12 @@
             <nav class="space-y-2">
                 <a href="#" onclick="toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl bg-blue-50 text-blue-600 font-medium text-sm transition-all"><i class="fa-solid fa-route w-5"></i> Gerir Rotas</a>
                 <a href="#" onclick="iniciarPagamentoPix(); toggleMenu();" class="flex items-center gap-3 px-3.5 py-3 rounded-xl text-amber-700 hover:bg-amber-50 font-bold text-sm transition-all border border-amber-200"><i class="fa-solid fa-qrcode w-5"></i> Pagar Pix (R$ 20,00)</a>
+                
+                <!-- BOTÃO DE DOWNLOAD DO APK NO PAINEL DO UTILIZADOR -->
+                <a href="/downloads/cicuite.apk" download="cicuite.apk" class="flex items-center gap-3 px-3.5 py-3 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-sm transition-all border border-emerald-200 shadow-sm mt-2">
+                    <img src="assets/icon.png" alt="App" class="w-5 h-5 object-contain">
+                    <span>Baixar App Android</span>
+                </a>
             </nav>
         </div>
         <div class="border-t border-slate-100 pt-4 text-xs text-slate-400 text-center">RotaFácil &bull; v2.5 Logística</div>
@@ -580,7 +586,6 @@
                                         if (cidade && cidade !== 'undefined') enderecoCompleto += `, ${cidade}`;
                                         if (cep && cep !== 'undefined') enderecoCompleto += ` - CEP ${cep}`;
 
-                                        // CORREÇÃO ROBUSTA: Normaliza totalmente o texto da rua (remove espaços duplos e padroniza minúsculas) para que qualquer variação mínima una perfeitamente
                                         let ruaLimpa = rua.toLowerCase().replace(/\s+/g, ' ').trim();
                                         let chaveUnica = ruaLimpa;
 
@@ -714,7 +719,6 @@
                 const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                 const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
 
-                // Marca com vermelho se houver múltiplos pacotes/mesmo endereço agrupado
                 const temMaisDeUmPacote = String(numeroPacote).includes(',');
                 if (temMaisDeUmPacote && !item.status) {
                     estiloBadge = "bg-red-600 text-white";

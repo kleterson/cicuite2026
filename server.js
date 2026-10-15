@@ -30,6 +30,8 @@ const client = new MercadoPagoConfig({
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 let pagamentosPendentes = {}; 
 
+app.use(express.static('www'));
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
