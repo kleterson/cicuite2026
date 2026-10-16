@@ -1081,9 +1081,10 @@
                     document.getElementById('contadorMovimentos').innerText = contadorMovimentosCarro;
 
                     if (!markerEntregador) {
-                        const elHtml = document.createElement('div');
-                        elHtml.className = 'entregador-marker';
-                        elHtml.innerHTML = '<img src="carro.png" alt="Carro">';
+                     const elHtml = document.createElement('div');
+elHtml.innerHTML = `
+    <div style="width: 20px; height: 20px; background-color: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 0 6px rgba(59, 130, 246, 0.3);"></div>
+`;
                         elHtml.title = 'Sua localização em tempo real';
 
                         markerEntregador = new maplibregl.Marker({ 
