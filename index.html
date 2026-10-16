@@ -780,7 +780,7 @@
                 if (fatia.length < 2) break;
                 
                 let stringCoords = fatia.map(p => `${p.lon},${p.lat}`).join(';');
-                let url = `https://router.project-osrm.org/route/v1/driving/${stringCoords}?overview=full&geometries=geojson`;
+                let url = `https://router.project-osrm.org/route/v1/driving/${stringCoords}?overview=full&geometries=geojson&steps=true&continue_straight=false`;
 
                 try {
                     let res = await fetch(url);
@@ -809,8 +809,31 @@
             let validos = destinos.filter(d => d.lat !== null && d.lon !== null);
             let distanciaTotalKm = 0;
 
+            // Mapeador para verificar coordenadas duplicadas e aplicar offset circular (em leque)
+            let mapaCoordenadasOcupadas = {};
+
             destinos.forEach((item, index) => {
                 if (item.lat && item.lon) {
+                    let latFinal = item.lat;
+                    let lonFinal = item.lon;
+                    
+                    let chaveCoord = `${latFinal.toFixed(4)}_${lonFinal.toFixed(4)}`;
+                    
+                    if (!mapaCoordenadasOcupadas[chaveCoord]) {
+                        mapaCoordenadasOcupadas[chaveCoord] = [];
+                    }
+                    mapaCoordenadasOcupadas[chaveCoord].push(index);
+                    
+                    let posicaoNoGrupo = mapaCoordenadasOcupadas[chaveCoord].length - 1;
+                    
+                    if (posicaoNoGrupo > 0) {
+                        // Distribuição em círculo ao redor do ponto real para afastar os marcadores idênticos
+                        let angulo = (posicaoNoGrupo * 2 * Math.PI) / 6; 
+                        let raio = 0.00025; // Raio ideal para separar marcadores no mapa
+                        latFinal += raio * Math.cos(angulo);
+                        lonFinal += raio * Math.sin(angulo);
+                    }
+
                     const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                     const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
                     const temMaisDeUmPacote = String(numeroPacote).includes(',');
@@ -850,7 +873,7 @@
                     const popup = new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml);
 
                     const marker = new maplibregl.Marker({ element: el })
-                        .setLngLat([item.lon, item.lat])
+                        .setLngLat([lonFinal, latFinal])
                         .setPopup(popup)
                         .addTo(map);
 
@@ -939,28 +962,50 @@
                 }
             }
 
-            btnOtimizar.innerHTML = textoOriginal;
-            btnOtimizar.disabled = false;
-
             let pendentes = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
             let concluidos = destinos.filter(d => d.status);
 
             if (pendentes.length < 2) {
+                btnOtimizar.innerHTML = textoOriginal;
+                btnOtimizar.disabled = false;
                 alert("Não há paradas pendentes suficientes para otimizar.");
                 return;
             }
 
-            let pontoAtualLat = null;
-            let pontoAtualLon = null;
+            try {
+                let stringCoords = pendentes.map(p => `${p.lon},${p.lat}`).join(';');
+                let urlTrip = `https://router.project-osrm.org/trip/v1/driving/${stringCoords}?source=first&roundtrip=false`;
+                
+                let res = await fetch(urlTrip);
+                let data = await res.json();
 
-            if (markerEntregador) {
-                const lngLat = markerEntregador.getLngLat();
-                pontoAtualLat = lngLat.lat;
-                pontoAtualLon = lngLat.lng;
-            } else {
-                pontoAtualLat = pendentes[0].lat;
-                pontoAtualLon = pendentes[0].lon;
+                if (data.code === 'Ok' && data.waypoints) {
+                    let ordemOtimizada = data.waypoints
+                        .sort((a, b) => a.waypoint_index - b.waypoint_index)
+                        .map(wp => pendentes[wp.singles_index || wp.waypoint_index]);
+
+                    destinos = [...ordemOtimizada, ...concluidos];
+                } else {
+                    executarOtimizacaoSimples(pendentes, concluidos);
+                }
+            } catch (err) {
+                console.error("Erro na otimização:", err);
+                executarOtimizacaoSimples(pendentes, concluidos);
             }
+
+            btnOtimizar.innerHTML = textoOriginal;
+            btnOtimizar.disabled = false;
+
+            salvarDados();
+            atualizarLista();
+            redrawMapMarkers();
+            
+            alert("✅ Rota otimizada considerando o sentido da mão de direção!");
+        }
+
+        function executarOtimizacaoSimples(pendentes, concluidos) {
+            let pontoAtualLat = markerEntregador ? markerEntregador.getLngLat().lat : pendentes[0].lat;
+            let pontoAtualLon = markerEntregador ? markerEntregador.getLngLat().lng : pendentes[0].lon;
 
             let naoVisitados = [...pendentes];
             let rotaOtimizadaPendentes = [];
@@ -985,11 +1030,6 @@
             }
 
             destinos = [...rotaOtimizadaPendentes, ...concluidos];
-            salvarDados();
-            atualizarLista();
-            redrawMapMarkers();
-            
-            alert("✅ Rota otimizada com sucesso!");
         }
 
         function navegarProximaParada() {
