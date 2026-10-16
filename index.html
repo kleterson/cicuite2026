@@ -370,8 +370,8 @@
                     },
                     paint: {
                         'line-color': '#3b82f6',
-                        'line-width': 5,
-                        'line-opacity': 0.9
+                        'line-width': 4,
+                        'line-opacity': 0.75
                     }
                 });
 
@@ -806,24 +806,26 @@
             markersList.forEach(m => m.remove());
             markersList = [];
 
-            let validos = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
+            let validos = destinos.filter(d => d.lat !== null && d.lon !== null);
             let distanciaTotalKm = 0;
 
             destinos.forEach((item, index) => {
                 if (item.lat && item.lon) {
-                    if (item.status === 'entregue' || item.status === 'insucesso') {
-                        return; 
-                    }
-
                     const numeroParada = item.stopOriginal !== undefined ? item.stopOriginal : (index + 1);
                     const numeroPacote = item.sequenceOriginal !== undefined ? item.sequenceOriginal : `${index + 1}`;
                     const temMaisDeUmPacote = String(numeroPacote).includes(',');
 
                     const el = document.createElement('div');
                     el.className = 'custom-marker';
-                    if (temMaisDeUmPacote) {
+                    
+                    if (item.status === 'entregue') {
+                        el.classList.add('entregue');
+                    } else if (item.status === 'insucesso') {
+                        el.classList.add('insucesso');
+                    } else if (temMaisDeUmPacote) {
                         el.classList.add('mesmo-endereco');
                     }
+                    
                     el.innerHTML = `${numeroParada}`;
 
                     const enderecoEscapado = item.endereco.replace(/'/g, "\\'");
@@ -881,7 +883,7 @@
                 });
             }
 
-            let todosComCoords = destinos.filter(d => d.lat !== null && d.lon !== null && !d.status);
+            let todosComCoords = destinos.filter(d => d.lat !== null && d.lon !== null);
             if (todosComCoords.length > 0 && !primeiraCentralizacaoGPS) {
                 let bounds = new maplibregl.LngLatBounds();
                 todosComCoords.forEach(d => bounds.extend([d.lon, d.lat]));
